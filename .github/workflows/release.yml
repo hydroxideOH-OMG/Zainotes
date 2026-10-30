@@ -1,0 +1,92 @@
+name: Release Build & Publish
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag_name:
+        description: 'Release Tag (e.g. v1.0.0)'
+        required: true
+        default: 'v1.0.0'
+
+jobs:
+  release:
+    name: Build & Release APK
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+          cache: gradle
+
+      - name: Make Gradle wrapper executable
+        run: chmod +x gradlew
+
+      - name: Build Release APK
+        run: ./gradlew assembleRelease --stacktrace
+
+      - name: Sign Release APK
+        env:
+          KEYSTORE_BASE64: ${{ secrets.SIGNING_KEYSTORE_BASE64 }}
+          KEYSTORE_PASS: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASS: ${{ secrets.KEY_PASSWORD }}
+        run: |
+          mkdir -p release-output
+          RELEASE_APK=$(find app/build/outputs/apk/release -name "*.apk" | head -n 1)
+
+          if [ -n "$KEYSTORE_BASE64" ] && [ -n "$KEYSTORE_PASS" ] && [ -n "$KEY_ALIAS" ]; then
+            echo "Signing with repository secret keystore..."
+            echo "$KEYSTORE_BASE64" | base64 -d > release.keystore
+            $ANDROID_HOME/build-tools/35.0.0/apksigner sign \
+              --ks release.keystore \
+              --ks-pass pass:"$KEYSTORE_PASS" \
+              --ks-key-alias "$KEY_ALIAS" \
+              --key-pass pass:"${KEY_PASS:-$KEYSTORE_PASS}" \
+              --out release-output/Zainotes-signed.apk \
+              "$RELEASE_APK"
+          else
+            echo "No custom release secrets configured. Signing with automated release key..."
+            keytool -genkeypair -v -keystore ci.keystore -storepass android -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Zainotes, O=OpenSource, C=US"
+            $ANDROID_HOME/build-tools/35.0.0/apksigner sign \
+              --ks ci.keystore \
+              --ks-pass pass:android \
+              --ks-key-alias androiddebugkey \
+              --key-pass pass:android \
+              --out release-output/Zainotes-signed.apk \
+              "$RELEASE_APK"
+          fi
+
+      - name: Determine Tag Name
+        id: tag
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "name=${{ github.event.inputs.tag_name }}" >> $GITHUB_OUTPUT
+          else
+            echo "name=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.tag.outputs.name }}
+          name: Zainotes ${{ steps.tag.outputs.name }}
+          draft: false
+          prerelease: false
+          generate_release_notes: true
+          files: |
+            release-output/Zainotes-signed.apk
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
