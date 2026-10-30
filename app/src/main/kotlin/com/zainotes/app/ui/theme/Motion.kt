@@ -29,6 +29,16 @@ object ExpressiveMotion {
         stiffness = Spring.StiffnessMedium
     )
 
+    fun <T> snappySpec() = spring<T>(
+        dampingRatio = Spring.DampingRatioNoBouncy,
+        stiffness = Spring.StiffnessMedium
+    )
+
+    fun <T> bouncySpec() = spring<T>(
+        dampingRatio = Spring.DampingRatioMediumBouncy,
+        stiffness = Spring.StiffnessLow
+    )
+
     val EmphasizedSpatial = tween<Float>(
         durationMillis = 500,
         easing = FastOutSlowInEasing

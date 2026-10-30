@@ -74,12 +74,12 @@ fun EditorScreen(
 
     val animatedBgColor by animateColorAsState(
         targetValue = targetBgColor,
-        animationSpec = ExpressiveMotion.SnappySpring,
+        animationSpec = ExpressiveMotion.snappySpec(),
         label = "bgColor"
     )
     val animatedContentColor by animateColorAsState(
         targetValue = targetContentColor,
-        animationSpec = ExpressiveMotion.SnappySpring,
+        animationSpec = ExpressiveMotion.snappySpec(),
         label = "contentColor"
     )
 
