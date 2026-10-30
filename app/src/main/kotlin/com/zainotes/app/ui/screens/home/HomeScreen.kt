@@ -45,8 +45,11 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.SearchBar
-import androidx.compose.material3.SearchBarDefaults
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.layout.width
+import androidx.compose.material3.Surface
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
@@ -74,7 +77,6 @@ fun HomeScreen(
     modifier: Modifier = Modifier
 ) {
     val state by viewModel.uiState.collectAsState()
-    var searchActive by remember { mutableStateOf(false) }
 
     Scaffold(
         modifier = modifier.fillMaxSize(),
@@ -85,49 +87,61 @@ fun HomeScreen(
                     .padding(horizontal = 16.dp, vertical = 8.dp)
             ) {
                 // Expressive Search Bar
-                SearchBar(
-                    inputField = {
-                        SearchBarDefaults.InputField(
-                            query = state.searchQuery,
-                            onQueryChange = { viewModel.onSearchQueryChanged(it) },
-                            onSearch = { searchActive = false },
-                            expanded = false,
-                            onExpandedChange = { searchActive = it },
-                            placeholder = { Text("Search notes and tasks...") },
-                            leadingIcon = {
-                                Icon(
-                                    imageVector = Icons.Default.Search,
-                                    contentDescription = "Search"
-                                )
-                            },
-                            trailingIcon = {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    if (state.searchQuery.isNotEmpty()) {
-                                        IconButton(onClick = { viewModel.onSearchQueryChanged("") }) {
-                                            Icon(
-                                                imageVector = Icons.Default.Clear,
-                                                contentDescription = "Clear search"
-                                            )
-                                        }
-                                    }
-                                    IconButton(onClick = onNavigateToSettings) {
-                                        Icon(
-                                            imageVector = Icons.Default.Settings,
-                                            contentDescription = "Settings"
-                                        )
-                                    }
-                                }
-                            }
+                Surface(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(56.dp),
+                    shape = RoundedCornerShape(28.dp),
+                    color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                    tonalElevation = 2.dp
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(horizontal = 16.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Search,
+                            contentDescription = "Search",
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant
                         )
-                    },
-                    expanded = false,
-                    onExpandedChange = {},
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = MaterialTheme.shapes.extraLarge,
-                    colors = SearchBarDefaults.colors(
-                        containerColor = MaterialTheme.colorScheme.surfaceContainer
-                    )
-                ) {}
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Box(modifier = Modifier.weight(1f)) {
+                            if (state.searchQuery.isEmpty()) {
+                                Text(
+                                    text = "Search notes and tasks...",
+                                    style = MaterialTheme.typography.bodyLarge,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                            BasicTextField(
+                                value = state.searchQuery,
+                                onValueChange = { viewModel.onSearchQueryChanged(it) },
+                                textStyle = MaterialTheme.typography.bodyLarge.copy(color = MaterialTheme.colorScheme.onSurface),
+                                cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
+                                singleLine = true,
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                        }
+                        if (state.searchQuery.isNotEmpty()) {
+                            IconButton(onClick = { viewModel.onSearchQueryChanged("") }) {
+                                Icon(
+                                    imageVector = Icons.Default.Clear,
+                                    contentDescription = "Clear search",
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                        IconButton(onClick = onNavigateToSettings) {
+                            Icon(
+                                imageVector = Icons.Default.Settings,
+                                contentDescription = "Settings",
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                }
 
                 Spacer(modifier = Modifier.height(10.dp))
 
