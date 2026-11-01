@@ -10,6 +10,8 @@
 package com.zainotes.app.ui.components
 
 import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
@@ -64,6 +66,7 @@ import com.zainotes.app.data.model.CardSize
 import com.zainotes.app.data.model.Note
 import com.zainotes.app.data.model.NoteBlock
 import com.zainotes.app.ui.theme.CardShapeExpressive
+import com.zainotes.app.ui.theme.ExpressiveMotion
 import com.zainotes.app.ui.theme.NoteColor
 
 @OptIn(ExperimentalFoundationApi::class)
@@ -102,6 +105,7 @@ fun NoteCard(
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
         modifier = modifier
             .fillMaxWidth()
+            .animateContentSize(animationSpec = ExpressiveMotion.snappySpec())
             .clip(CardShapeExpressive)
             .combinedClickable(
                 onClick = onClick,
@@ -213,6 +217,11 @@ fun NoteCard(
 
             // Task completion progress bar
             if (note.totalTasksCount > 0) {
+                val taskProgress by animateFloatAsState(
+                    targetValue = note.completedTasksCount.toFloat() / note.totalTasksCount,
+                    animationSpec = ExpressiveMotion.snappySpec(),
+                    label = "taskProgress"
+                )
                 Spacer(modifier = Modifier.height(8.dp))
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -220,7 +229,7 @@ fun NoteCard(
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
                     LinearProgressIndicator(
-                        progress = { note.completedTasksCount.toFloat() / note.totalTasksCount },
+                        progress = { taskProgress },
                         modifier = Modifier
                             .weight(1f)
                             .height(6.dp)
@@ -291,6 +300,11 @@ private fun NoteBlockPreviewItem(
 ) {
     when (block.type) {
         BlockType.TASK -> {
+            val taskTextColor by animateColorAsState(
+                targetValue = if (block.isChecked) cardContentColor.copy(alpha = 0.86f) else cardContentColor,
+                animationSpec = ExpressiveMotion.snappySpec(),
+                label = "taskTextColor"
+            )
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier.fillMaxWidth()
@@ -309,7 +323,7 @@ private fun NoteBlockPreviewItem(
                 Text(
                     text = block.content.ifBlank { "Task" },
                     style = MaterialTheme.typography.bodyMedium.copy(
-                        color = cardContentColor,
+                        color = taskTextColor,
                         textDecoration = if (block.isChecked) TextDecoration.LineThrough else TextDecoration.None
                     ),
                     maxLines = 1,
