@@ -72,10 +72,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.zainotes.app.data.model.CardSize
-import com.zainotes.app.BuildConfig
 import com.zainotes.app.ui.components.CardSizePickerSheet
 import com.zainotes.app.ui.theme.CardShapeExpressive
 import com.zainotes.app.ui.theme.ThemeMode
@@ -398,7 +398,7 @@ fun SettingsScreen(
                         Spacer(modifier = Modifier.width(12.dp))
                         Column {
                             Text(
-                                text = "Zainotes v${BuildConfig.VERSION_NAME}",
+                                text = "Zainotes v${stringResource(com.zainotes.app.R.string.app_version)}",
                                 style = MaterialTheme.typography.bodyLarge,
                                 fontWeight = FontWeight.Bold
                             )
