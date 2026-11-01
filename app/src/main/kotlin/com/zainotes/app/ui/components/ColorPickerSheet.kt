@@ -73,8 +73,8 @@ fun ColorPickerSheet(
             ) {
                 items(NoteColor.entries) { noteColor ->
                     val isSelected = noteColor.id.equals(selectedColorId, ignoreCase = true)
-                    val bgColor = if (isDark) noteColor.darkContainer else noteColor.lightContainer
-                    val contentColor = if (isDark) noteColor.onDarkContainer else noteColor.onLightContainer
+                    val bgColor = noteColor.containerColor(isDark, MaterialTheme.colorScheme.surfaceContainerHigh)
+                    val contentColor = noteColor.contentColor(isDark, MaterialTheme.colorScheme.onSurface)
 
                     Column(
                         horizontalAlignment = Alignment.CenterHorizontally,

@@ -78,10 +78,10 @@ enum class NoteColor(
     DEFAULT(
         id = "default",
         displayName = "Default",
-        lightContainer = Color(0xFFF3EDF7),
-        onLightContainer = Color(0xFF1D1B20),
-        darkContainer = Color(0xFF211F26),
-        onDarkContainer = Color(0xFFE6E0E9)
+        lightContainer = Color.Unspecified,
+        onLightContainer = Color.Unspecified,
+        darkContainer = Color.Unspecified,
+        onDarkContainer = Color.Unspecified
     ),
     CORAL(
         id = "coral",
@@ -151,6 +151,26 @@ enum class NoteColor(
     companion object {
         fun fromId(id: String?): NoteColor {
             return entries.find { it.id.equals(id, ignoreCase = true) } ?: DEFAULT
+        }
+    }
+
+    fun containerColor(isDark: Boolean, defaultContainer: Color): Color {
+        return if (this == DEFAULT) {
+            defaultContainer
+        } else if (isDark) {
+            darkContainer
+        } else {
+            lightContainer
+        }
+    }
+
+    fun contentColor(isDark: Boolean, defaultContent: Color): Color {
+        return if (this == DEFAULT) {
+            defaultContent
+        } else if (isDark) {
+            onDarkContainer
+        } else {
+            onLightContainer
         }
     }
 }

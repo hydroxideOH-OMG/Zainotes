@@ -79,8 +79,8 @@ fun NoteCard(
 ) {
     val isDark = isSystemInDarkTheme()
     val noteColor = NoteColor.fromId(note.colorId)
-    val cardBg = if (isDark) noteColor.darkContainer else noteColor.lightContainer
-    val cardContent = if (isDark) noteColor.onDarkContainer else noteColor.onLightContainer
+    val cardBg = noteColor.containerColor(isDark, MaterialTheme.colorScheme.surfaceContainerHigh)
+    val cardContent = noteColor.contentColor(isDark, MaterialTheme.colorScheme.onSurface)
 
     var showMenu by remember { mutableStateOf(false) }
 

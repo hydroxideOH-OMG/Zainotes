@@ -69,8 +69,8 @@ fun EditorScreen(
     val isDark = isSystemInDarkTheme()
 
     val noteColor = NoteColor.fromId(state.colorId)
-    val targetBgColor = if (isDark) noteColor.darkContainer else noteColor.lightContainer
-    val targetContentColor = if (isDark) noteColor.onDarkContainer else noteColor.onLightContainer
+    val targetBgColor = noteColor.containerColor(isDark, MaterialTheme.colorScheme.background)
+    val targetContentColor = noteColor.contentColor(isDark, MaterialTheme.colorScheme.onBackground)
 
     val animatedBgColor by animateColorAsState(
         targetValue = targetBgColor,

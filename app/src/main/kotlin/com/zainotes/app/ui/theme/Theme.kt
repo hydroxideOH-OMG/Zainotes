@@ -110,10 +110,20 @@ fun ZainotesTheme(
 
     val context = LocalContext.current
     val colorScheme = when {
-        themeMode == ThemeMode.AMOLED -> AmoledColorScheme
         dynamicColor && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S -> {
-            if (isDark) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
+            val dynamic = if (isDark) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
+            if (themeMode == ThemeMode.AMOLED) {
+                dynamic.copy(
+                    background = AmoledBackground,
+                    surface = AmoledSurface,
+                    surfaceVariant = AmoledSurfaceVariant,
+                    surfaceContainer = AmoledSurfaceContainer
+                )
+            } else {
+                dynamic
+            }
         }
+        themeMode == ThemeMode.AMOLED -> AmoledColorScheme
         isDark -> DarkColorScheme
         else -> LightColorScheme
     }
