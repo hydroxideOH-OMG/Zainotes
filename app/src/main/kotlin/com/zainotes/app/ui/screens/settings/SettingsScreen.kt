@@ -75,6 +75,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.zainotes.app.data.model.CardSize
+import com.zainotes.app.BuildConfig
 import com.zainotes.app.ui.components.CardSizePickerSheet
 import com.zainotes.app.ui.theme.CardShapeExpressive
 import com.zainotes.app.ui.theme.ThemeMode
@@ -397,7 +398,7 @@ fun SettingsScreen(
                         Spacer(modifier = Modifier.width(12.dp))
                         Column {
                             Text(
-                                text = "Zainotes v${com.zainotes.app.BuildConfig.VERSION_NAME}",
+                                text = "Zainotes v${BuildConfig.VERSION_NAME}",
                                 style = MaterialTheme.typography.bodyLarge,
                                 fontWeight = FontWeight.Bold
                             )
