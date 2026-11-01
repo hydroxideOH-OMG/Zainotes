@@ -64,8 +64,8 @@ val AmoledSurfaceVariant = Color(0xFF18181A)
 val AmoledSurfaceContainer = Color(0xFF121212)
 
 /**
- * Curated Expressive Note Colors.
- * Provides distinct, aesthetically pleasing pastel tones for light and dark/AMOLED modes.
+ * Vibrant Expressive Note Colors.
+ * Provides rich, vibrant, high-contrast hues for light and AMOLED dark modes.
  */
 enum class NoteColor(
     val id: String,
@@ -85,67 +85,99 @@ enum class NoteColor(
     ),
     CORAL(
         id = "coral",
-        displayName = "Coral",
-        lightContainer = Color(0xFFFFDAD6),
-        onLightContainer = Color(0xFF410002),
-        darkContainer = Color(0xFF3B1E1E),
+        displayName = "Coral Red",
+        lightContainer = Color(0xFFFF8A80),
+        onLightContainer = Color(0xFF380705),
+        darkContainer = Color(0xFF6B1E19),
         onDarkContainer = Color(0xFFFFDAD6)
+    ),
+    PEACH(
+        id = "peach",
+        displayName = "Peach",
+        lightContainer = Color(0xFFFFAB91),
+        onLightContainer = Color(0xFF360F00),
+        darkContainer = Color(0xFF6E3310),
+        onDarkContainer = Color(0xFFFFDCC7)
     ),
     AMBER(
         id = "amber",
         displayName = "Amber",
-        lightContainer = Color(0xFFFFE08B),
-        onLightContainer = Color(0xFF241A00),
-        darkContainer = Color(0xFF352B11),
-        onDarkContainer = Color(0xFFFFE08B)
+        lightContainer = Color(0xFFFFD54F),
+        onLightContainer = Color(0xFF2E2000),
+        darkContainer = Color(0xFF5E4200),
+        onDarkContainer = Color(0xFFFFEFA8)
+    ),
+    LIME(
+        id = "lime",
+        displayName = "Lime",
+        lightContainer = Color(0xFFD4E157),
+        onLightContainer = Color(0xFF222900),
+        darkContainer = Color(0xFF3E4E0C),
+        onDarkContainer = Color(0xFFEAF5A0)
     ),
     SAGE(
         id = "sage",
-        displayName = "Sage",
-        lightContainer = Color(0xFFC7EBD1),
-        onLightContainer = Color(0xFF002110),
-        darkContainer = Color(0xFF1C2B20),
-        onDarkContainer = Color(0xFFC7EBD1)
+        displayName = "Emerald",
+        lightContainer = Color(0xFF81C784),
+        onLightContainer = Color(0xFF002E0E),
+        darkContainer = Color(0xFF1B532C),
+        onDarkContainer = Color(0xFFB9F6CA)
     ),
     MINT(
         id = "mint",
-        displayName = "Mint",
-        lightContainer = Color(0xFFBAF4EB),
-        onLightContainer = Color(0xFF00201D),
-        darkContainer = Color(0xFF142B28),
-        onDarkContainer = Color(0xFFBAF4EB)
+        displayName = "Teal Mint",
+        lightContainer = Color(0xFF4DB6AC),
+        onLightContainer = Color(0xFF002824),
+        darkContainer = Color(0xFF104E48),
+        onDarkContainer = Color(0xFFA7FFEB)
     ),
     SKY(
         id = "sky",
-        displayName = "Sky",
-        lightContainer = Color(0xFFC8E6FF),
-        onLightContainer = Color(0xFF001E30),
-        darkContainer = Color(0xFF162635),
-        onDarkContainer = Color(0xFFC8E6FF)
+        displayName = "Sky Blue",
+        lightContainer = Color(0xFF4FC3F7),
+        onLightContainer = Color(0xFF002336),
+        darkContainer = Color(0xFF124A75),
+        onDarkContainer = Color(0xFFBBDEFB)
+    ),
+    INDIGO(
+        id = "indigo",
+        displayName = "Indigo",
+        lightContainer = Color(0xFF7986CB),
+        onLightContainer = Color(0xFF0E1642),
+        darkContainer = Color(0xFF252D68),
+        onDarkContainer = Color(0xFFC5CAE9)
     ),
     LAVENDER(
         id = "lavender",
-        displayName = "Lavender",
-        lightContainer = Color(0xFFEADBFF),
-        onLightContainer = Color(0xFF22005C),
-        darkContainer = Color(0xFF281E38),
-        onDarkContainer = Color(0xFFEADBFF)
+        displayName = "Purple",
+        lightContainer = Color(0xFFBA68C8),
+        onLightContainer = Color(0xFF2B0038),
+        darkContainer = Color(0xFF53165E),
+        onDarkContainer = Color(0xFFF3E5F5)
     ),
     ROSE(
         id = "rose",
-        displayName = "Rose",
-        lightContainer = Color(0xFFFFD8EB),
-        onLightContainer = Color(0xFF370B24),
-        darkContainer = Color(0xFF371D2D),
-        onDarkContainer = Color(0xFFFFD8EB)
+        displayName = "Hot Rose",
+        lightContainer = Color(0xFFF06292),
+        onLightContainer = Color(0xFF3B001B),
+        darkContainer = Color(0xFF661034),
+        onDarkContainer = Color(0xFFFCE4EC)
+    ),
+    CLAY(
+        id = "clay",
+        displayName = "Warm Mocha",
+        lightContainer = Color(0xFFA1887F),
+        onLightContainer = Color(0xFF231510),
+        darkContainer = Color(0xFF4B342C),
+        onDarkContainer = Color(0xFFEFEBE9)
     ),
     SLATE(
         id = "slate",
         displayName = "Slate",
-        lightContainer = Color(0xFFDEE2EC),
-        onLightContainer = Color(0xFF141C24),
-        darkContainer = Color(0xFF21252D),
-        onDarkContainer = Color(0xFFDEE2EC)
+        lightContainer = Color(0xFF90A4AE),
+        onLightContainer = Color(0xFF101B20),
+        darkContainer = Color(0xFF293941),
+        onDarkContainer = Color(0xFFECEFF1)
     );
 
     companion object {

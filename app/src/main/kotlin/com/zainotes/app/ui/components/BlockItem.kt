@@ -111,6 +111,16 @@ fun BlockItem(
                 }
                 Spacer(modifier = Modifier.width(4.dp))
             }
+            BlockType.NUMBERED -> {
+                Text(
+                    text = "${index + 1}.",
+                    style = MaterialTheme.typography.bodyLarge.copy(
+                        fontWeight = FontWeight.Bold,
+                        color = contentColor.copy(alpha = 0.85f)
+                    ),
+                    modifier = Modifier.padding(start = 12.dp, end = 6.dp)
+                )
+            }
             BlockType.HEADING -> {
                 Text(
                     text = "H",
@@ -143,7 +153,7 @@ fun BlockItem(
                     MaterialTheme.typography.bodyLarge.copy(color = contentColor)
                 }
             }
-            BlockType.BULLET, BlockType.TEXT -> MaterialTheme.typography.bodyLarge.copy(
+            BlockType.BULLET, BlockType.TEXT, BlockType.NUMBERED -> MaterialTheme.typography.bodyLarge.copy(
                 color = contentColor,
                 lineHeight = 22.sp
             )
@@ -158,6 +168,7 @@ fun BlockItem(
                 val placeholder = when (block.type) {
                     BlockType.TASK -> "Add a task item..."
                     BlockType.BULLET -> "Add a bullet point..."
+                    BlockType.NUMBERED -> "Add a numbered item..."
                     BlockType.HEADING -> "Heading..."
                     BlockType.TEXT -> "Write note text..."
                 }
@@ -216,6 +227,13 @@ fun BlockItem(
                     text = { Text("Bulletin Point") },
                     onClick = {
                         onConvertType(BlockType.BULLET)
+                        showMenu = false
+                    }
+                )
+                DropdownMenuItem(
+                    text = { Text("Numbered (1 2 3)") },
+                    onClick = {
+                        onConvertType(BlockType.NUMBERED)
                         showMenu = false
                     }
                 )

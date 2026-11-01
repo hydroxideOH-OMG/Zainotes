@@ -100,7 +100,8 @@ Material dynamic color is used when enabled and supported; the listed light/dark
 ### Neutral
 - **Light background** (`#FEF7FF`): static light theme canvas.
 - **AMOLED pure black** (`#000000`) and **AMOLED surface** (`#080808`): the sole dark theme canvas for both manual AMOLED mode and system dark theme. Standard grayish dark mode is removed.
-- **Note colors:** Coral, Amber, Sage, Mint, Sky, Lavender, Rose, and Slate; `DEFAULT` resolves from the active Material surface role.
+- **Note colors:** Vibrant Coral Red, Peach, Amber, Electric Lime, Emerald, Teal Mint, Sky Blue, Electric Indigo, Royal Purple, Hot Rose, Warm Mocha, and Slate; `DEFAULT` resolves from the active Material surface role.
+- **Background Themes & Vector Illustrations:** 15 native vector themes including all Google Keep themes (Groceries, Food & Cooking, Music, Recipes, Notes & Pen, Travel & Places, Cinema & Film, Celebration, Storm & Weather, Night Sky & Dusk) plus extended patterns (Flora & Nature, Abstract Doodles, Ruled Lines, Graph Grid, Dot Matrix). Rendered natively via Compose Canvas vector primitives for resolution independence, zero network dependency, and seamless adaptation across Light and AMOLED dark modes.
 
 ### Named Rules
 **The Semantic Chrome Rule.** App-level surfaces use Material color roles; user-selected note colors are reserved for note content and previews.
@@ -159,7 +160,10 @@ The shape scale distinguishes compact controls from content containers: 8dp extr
 - **Floating Bottom Navigation Dock:** Centered, elevated floating navigation dock composed of an M3 Expressive floating navigation pill (Home, AI Chat, Settings) with active-pill horizontal expansion, and a standalone circular M3 FAB separated by a 10dp gap.
 - **Dock Elevation:** Level 2/3 drop shadow (`6dp` shadow elevation, `ambientColor` and `spotColor`).
 - **Dock Colors:** `surfaceContainerHighest` container, `secondaryContainer` active indicator pill, `onSecondaryContainer` active text and icon, `onSurfaceVariant` inactive icons.
-- **Editor:** Temporarily hides the floating navigation dock to keep the note canvas and block toolbar focused; system Back returns to the prior destination.
+- **Editor Floating Bottom Navigation Dock:** Replaces static bottom toolbars with a responsive floating dock matching the app's navigation dock architecture:
+  - **Left Circular Tick Button:** 56dp circular FAB (`primaryContainer`, `Icons.Default.Check`) for single-tap note completion, save, and exit.
+  - **10dp Separation Gap:** Standardized 10dp separation between circular action and the actions pill.
+  - **Right Long Pill Toolbar:** Elevated floating pill (`surfaceContainerHighest`, 6dp elevation, CircleShape) housing actions for Text, Bulletings (`BULLET`), Checkpoints (`TASK`), 1 2 3 list (`NUMBERED`), Heading (`HEADING`), Note Theme & Vibrant Color Palette, and Card Size picker.
 
 ### Note Canvas
 The staggered card grid is the product's organizing surface. Task completion is available directly from card previews. Progress and card content changes use spring animation while the task's checked state remains explicitly represented by its checkbox and strike-through.

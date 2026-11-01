@@ -18,6 +18,7 @@ data class Note(
     val id: Long = 0,
     val title: String = "",
     val colorId: String = "default",
+    val backgroundTheme: String = "none",
     val cardSize: CardSize = CardSize.STANDARD,
     val isPinned: Boolean = false,
     val isArchived: Boolean = false,

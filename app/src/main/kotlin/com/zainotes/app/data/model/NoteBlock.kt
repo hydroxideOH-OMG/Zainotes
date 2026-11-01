@@ -15,6 +15,7 @@ enum class BlockType {
     TEXT,
     TASK,
     BULLET,
+    NUMBERED,
     HEADING
 }
 

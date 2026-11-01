@@ -66,6 +66,7 @@ import androidx.compose.ui.unit.sp
 import com.zainotes.app.data.model.BlockType
 import com.zainotes.app.data.model.CardSize
 import com.zainotes.app.data.model.Note
+import com.zainotes.app.data.model.NoteBackgroundTheme
 import com.zainotes.app.data.model.NoteBlock
 import com.zainotes.app.ui.components.CardSizePickerSheet
 import com.zainotes.app.ui.theme.CardShapeExpressive
@@ -118,11 +119,18 @@ fun NoteCard(
                 onLongClick = { showMenu = true }
             )
     ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(16.dp)
-        ) {
+        Box(modifier = Modifier.fillMaxWidth()) {
+            NoteBackgroundRenderer(
+                theme = NoteBackgroundTheme.fromId(note.backgroundTheme),
+                tint = cardContent,
+                modifier = Modifier.matchParentSize()
+            )
+
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp)
+            ) {
             // Header: Title and Pin Icon / Actions
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -296,6 +304,7 @@ fun NoteCard(
             }
         }
     }
+    }
 
     if (showSizePicker) {
         CardSizePickerSheet(
@@ -374,6 +383,28 @@ private fun NoteBlockPreviewItem(
                         .background(cardContentColor.copy(alpha = 0.7f), shape = CircleShape)
                 )
                 Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    text = block.content,
+                    style = MaterialTheme.typography.bodyMedium.copy(color = cardContentColor),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+        }
+        BlockType.NUMBERED -> {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text(
+                    text = "${block.order + 1}.",
+                    style = MaterialTheme.typography.bodySmall.copy(
+                        fontWeight = FontWeight.Bold,
+                        color = cardContentColor.copy(alpha = 0.85f)
+                    ),
+                    modifier = Modifier.width(18.dp)
+                )
+                Spacer(modifier = Modifier.width(4.dp))
                 Text(
                     text = block.content,
                     style = MaterialTheme.typography.bodyMedium.copy(color = cardContentColor),

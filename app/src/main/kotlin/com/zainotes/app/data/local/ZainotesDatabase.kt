@@ -14,6 +14,8 @@ import androidx.room.Database
 import androidx.room.Room
 import androidx.room.RoomDatabase
 import androidx.room.TypeConverters
+import androidx.room.migration.Migration
+import androidx.sqlite.db.SupportSQLiteDatabase
 import com.zainotes.app.data.model.CardSize
 import com.zainotes.app.data.model.Note
 import com.zainotes.app.data.model.NoteBlock
@@ -22,7 +24,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 
-@Database(entities = [Note::class], version = 1, exportSchema = false)
+@Database(entities = [Note::class], version = 2, exportSchema = false)
 @TypeConverters(Converters::class)
 abstract class ZainotesDatabase : RoomDatabase() {
     abstract fun noteDao(): NoteDao
@@ -31,6 +33,12 @@ abstract class ZainotesDatabase : RoomDatabase() {
         @Volatile
         private var INSTANCE: ZainotesDatabase? = null
 
+        val MIGRATION_1_2 = object : Migration(1, 2) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE notes ADD COLUMN backgroundTheme TEXT NOT NULL DEFAULT 'none'")
+            }
+        }
+
         fun getDatabase(context: Context): ZainotesDatabase {
             return INSTANCE ?: synchronized(this) {
                 val instance = Room.databaseBuilder(
@@ -38,14 +46,17 @@ abstract class ZainotesDatabase : RoomDatabase() {
                     ZainotesDatabase::class.java,
                     "zainotes_database"
                 )
+                .addMigrations(MIGRATION_1_2)
+                .fallbackToDestructiveMigration()
                 .addCallback(object : Callback() {
-                    override fun onCreate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
+                    override fun onCreate(db: SupportSQLiteDatabase) {
                         super.onCreate(db)
                         // Seed welcome note on first install
                         CoroutineScope(Dispatchers.IO).launch {
                             val welcomeNote = Note(
                                 title = "Welcome to Zainotes! ✨",
                                 colorId = "lavender",
+                                backgroundTheme = "none",
                                 cardSize = CardSize.WIDE,
                                 isPinned = true,
                                 blocks = listOf(

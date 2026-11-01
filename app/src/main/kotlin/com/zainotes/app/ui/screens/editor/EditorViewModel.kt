@@ -27,6 +27,7 @@ data class EditorUiState(
     val noteId: Long = 0,
     val title: String = "",
     val colorId: String = "default",
+    val backgroundTheme: String = "none",
     val cardSize: CardSize = CardSize.STANDARD,
     val isPinned: Boolean = false,
     val isArchived: Boolean = false,
@@ -58,6 +59,7 @@ class EditorViewModel(
                         noteId = note.id,
                         title = note.title,
                         colorId = note.colorId,
+                        backgroundTheme = note.backgroundTheme,
                         cardSize = note.cardSize,
                         isPinned = note.isPinned,
                         isArchived = note.isArchived,
@@ -75,6 +77,11 @@ class EditorViewModel(
 
     fun updateColor(colorId: String) {
         _uiState.update { it.copy(colorId = colorId) }
+        autoSave()
+    }
+
+    fun updateBackgroundTheme(theme: String) {
+        _uiState.update { it.copy(backgroundTheme = theme) }
         autoSave()
     }
 
@@ -195,6 +202,7 @@ class EditorViewModel(
                 id = current.noteId,
                 title = current.title,
                 colorId = current.colorId,
+                backgroundTheme = current.backgroundTheme,
                 cardSize = current.cardSize,
                 isPinned = current.isPinned,
                 isArchived = current.isArchived,
