@@ -103,24 +103,6 @@ fun HomeScreen(
                     containerColor = MaterialTheme.colorScheme.background
                 )
             )
-        },
-        floatingActionButton = {
-            FloatingActionButton(
-                onClick = onNewNoteClick,
-                containerColor = MaterialTheme.colorScheme.primaryContainer,
-                contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
-                shape = MaterialTheme.shapes.large,
-                elevation = FloatingActionButtonDefaults.elevation(
-                    defaultElevation = 2.dp,
-                    pressedElevation = 6.dp
-                )
-            ) {
-                Icon(
-                    imageVector = Icons.Default.Add,
-                    contentDescription = "Create note",
-                    modifier = Modifier.size(28.dp)
-                )
-            }
         }
     ) { insets ->
         Column(

@@ -11,6 +11,7 @@ package com.zainotes.app.ui.navigation
 
 sealed class Screen(val route: String) {
     data object Home : Screen("home")
+    data object AiChat : Screen("ai_chat")
     data object Settings : Screen("settings")
     data object Editor : Screen("editor/{noteId}") {
         fun createRoute(noteId: Long = 0L) = "editor/$noteId"

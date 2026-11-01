@@ -156,9 +156,10 @@ The shape scale distinguishes compact controls from content containers: 8dp extr
 - **Behavior:** Search filters notes and blocks; title edits persist to local storage.
 
 ### Navigation
-- **Compact:** Material NavigationBar with Notes and Settings destinations.
-- **Medium and wider:** Material NavigationRail with the same destination identity and order.
-- **Editor:** Temporarily hides top-level navigation to keep the canvas focused; system Back returns to the prior destination.
+- **Floating Bottom Navigation Dock:** Centered, elevated floating navigation dock composed of an M3 Expressive floating navigation pill (Home, AI Chat, Settings) with active-pill horizontal expansion, and a standalone circular M3 FAB separated by a 10dp gap.
+- **Dock Elevation:** Level 2/3 drop shadow (`6dp` shadow elevation, `ambientColor` and `spotColor`).
+- **Dock Colors:** `surfaceContainerHighest` container, `secondaryContainer` active indicator pill, `onSecondaryContainer` active text and icon, `onSurfaceVariant` inactive icons.
+- **Editor:** Temporarily hides the floating navigation dock to keep the note canvas and block toolbar focused; system Back returns to the prior destination.
 
 ### Note Canvas
 The staggered card grid is the product's organizing surface. Task completion is available directly from card previews. Progress and card content changes use spring animation while the task's checked state remains explicitly represented by its checkbox and strike-through.
