@@ -20,6 +20,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
@@ -98,10 +99,7 @@ fun FloatingNavDock(
     ) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.Center,
-            modifier = Modifier.semantics {
-                role = Role.TabList
-            }
+            horizontalArrangement = Arrangement.Center
         ) {
             // 1. Primary Navigation Bar (M3 Expressive Floating Navigation Pill)
             Surface(
@@ -119,7 +117,9 @@ fun FloatingNavDock(
                 shadowElevation = 6.dp
             ) {
                 Row(
-                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 6.dp),
+                    modifier = Modifier
+                        .selectableGroup()
+                        .padding(horizontal = 6.dp, vertical = 6.dp),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
