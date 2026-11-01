@@ -21,10 +21,10 @@ val ExpressiveShapes = Shapes(
     extraSmall = RoundedCornerShape(8.dp),
     small = RoundedCornerShape(12.dp),
     medium = RoundedCornerShape(18.dp),
-    large = RoundedCornerShape(26.dp),
-    extraLarge = RoundedCornerShape(32.dp)
+    large = RoundedCornerShape(20.dp),
+    extraLarge = RoundedCornerShape(28.dp)
 )
 
-val CardShapeExpressive = RoundedCornerShape(24.dp)
+val CardShapeExpressive = RoundedCornerShape(20.dp)
 val ChipShapeExpressive = RoundedCornerShape(14.dp)
 val PillShape = RoundedCornerShape(100.dp)

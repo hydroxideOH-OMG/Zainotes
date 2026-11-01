@@ -13,7 +13,6 @@ import androidx.compose.animation.animateColorAsState
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -36,6 +35,7 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CheckboxDefaults
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
@@ -43,6 +43,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -52,6 +53,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
@@ -62,7 +64,6 @@ import com.zainotes.app.data.model.CardSize
 import com.zainotes.app.data.model.Note
 import com.zainotes.app.data.model.NoteBlock
 import com.zainotes.app.ui.theme.CardShapeExpressive
-import com.zainotes.app.ui.theme.ExpressiveMotion
 import com.zainotes.app.ui.theme.NoteColor
 
 @OptIn(ExperimentalFoundationApi::class)
@@ -77,12 +78,13 @@ fun NoteCard(
     onDelete: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val isDark = isSystemInDarkTheme()
+    val isDark = MaterialTheme.colorScheme.background.luminance() < 0.5f
     val noteColor = NoteColor.fromId(note.colorId)
     val cardBg = noteColor.containerColor(isDark, MaterialTheme.colorScheme.surfaceContainerHigh)
     val cardContent = noteColor.contentColor(isDark, MaterialTheme.colorScheme.onSurface)
 
     var showMenu by remember { mutableStateOf(false) }
+    var confirmDelete by remember { mutableStateOf(false) }
 
     val maxPreviewItems = when (note.cardSize) {
         CardSize.COMPACT -> 2
@@ -136,9 +138,9 @@ fun NoteCard(
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     if (note.isPinned) {
                         Icon(
-                            imageVector = Icons.Default.PushPin,
-                            contentDescription = "Pinned",
-                            tint = MaterialTheme.colorScheme.primary,
+                        imageVector = Icons.Default.PushPin,
+                        contentDescription = "Pinned",
+                        tint = cardContent,
                             modifier = Modifier
                                 .size(18.dp)
                                 .padding(end = 4.dp)
@@ -148,11 +150,11 @@ fun NoteCard(
                     Box {
                         IconButton(
                             onClick = { showMenu = true },
-                            modifier = Modifier.size(24.dp)
+                            modifier = Modifier.size(48.dp)
                         ) {
                             Icon(
                                 imageVector = Icons.Default.MoreVert,
-                                contentDescription = "More",
+                                contentDescription = "More options for ${note.title.ifBlank { "untitled note" }}",
                                 tint = cardContent.copy(alpha = 0.6f),
                                 modifier = Modifier.size(16.dp)
                             )
@@ -198,10 +200,10 @@ fun NoteCard(
                                 }
                             )
                             DropdownMenuItem(
-                                text = { Text("Delete Note", color = MaterialTheme.colorScheme.error) },
+                                text = { Text("Delete note") },
                                 onClick = {
-                                    onDelete()
                                     showMenu = false
+                                    confirmDelete = true
                                 }
                             )
                         }
@@ -265,6 +267,20 @@ fun NoteCard(
             }
         }
     }
+
+    if (confirmDelete) {
+        AlertDialog(
+            onDismissRequest = { confirmDelete = false },
+            title = { Text("Delete this note?") },
+            text = { Text("This will permanently delete ${note.title.ifBlank { "this note" }}.") },
+            confirmButton = {
+                TextButton(onClick = { confirmDelete = false; onDelete() }) {
+                    Text("Delete", color = MaterialTheme.colorScheme.error)
+                }
+            },
+            dismissButton = { TextButton(onClick = { confirmDelete = false }) { Text("Cancel") } }
+        )
+    }
 }
 
 @Composable
@@ -293,7 +309,7 @@ private fun NoteBlockPreviewItem(
                 Text(
                     text = block.content.ifBlank { "Task" },
                     style = MaterialTheme.typography.bodyMedium.copy(
-                        color = if (block.isChecked) cardContentColor.copy(alpha = 0.45f) else cardContentColor,
+                        color = cardContentColor,
                         textDecoration = if (block.isChecked) TextDecoration.LineThrough else TextDecoration.None
                     ),
                     maxLines = 1,
@@ -336,7 +352,7 @@ private fun NoteBlockPreviewItem(
                 Text(
                     text = block.content,
                     style = MaterialTheme.typography.bodyMedium.copy(
-                        color = cardContentColor.copy(alpha = 0.85f)
+                        color = cardContentColor
                     ),
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis

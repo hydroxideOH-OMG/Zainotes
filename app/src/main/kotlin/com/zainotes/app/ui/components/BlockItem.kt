@@ -51,6 +51,8 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextDecoration
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.zainotes.app.data.model.BlockType
@@ -91,7 +93,7 @@ fun BlockItem(
                         uncheckedColor = contentColor.copy(alpha = 0.6f),
                         checkmarkColor = MaterialTheme.colorScheme.onPrimary
                     ),
-                    modifier = Modifier.size(36.dp)
+                    modifier = Modifier.size(48.dp)
                 )
                 Spacer(modifier = Modifier.width(4.dp))
             }
@@ -172,7 +174,9 @@ fun BlockItem(
                 cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Default),
                 keyboardActions = KeyboardActions(onDone = { onEnterPressed() }),
-                modifier = Modifier.fillMaxWidth()
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .semantics { contentDescription = "${block.type.name.lowercase().replaceFirstChar { it.uppercase() }} block" }
             )
         }
 
@@ -180,7 +184,7 @@ fun BlockItem(
         Box {
             IconButton(
                 onClick = { showMenu = true },
-                modifier = Modifier.size(32.dp)
+                modifier = Modifier.size(48.dp)
             ) {
                 Icon(
                     imageVector = Icons.Default.MoreVert,

@@ -11,6 +11,7 @@ package com.zainotes.app.ui.screens.settings
 
 import android.content.Intent
 import android.net.Uri
+import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
@@ -26,6 +27,7 @@ import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -139,7 +141,8 @@ fun SettingsScreen(
                 .fillMaxSize()
                 .padding(paddingValues)
                 .verticalScroll(rememberScrollState())
-                .padding(horizontal = 16.dp, vertical = 8.dp),
+                .padding(horizontal = 16.dp, vertical = 8.dp)
+                .widthIn(max = 720.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
             // Appearance Section
@@ -205,7 +208,9 @@ fun SettingsScreen(
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .clickable { viewModel.setDynamicColor(!state.dynamicColor) }
+                            .clickable(enabled = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                                viewModel.setDynamicColor(!state.dynamicColor)
+                            }
                             .padding(vertical = 6.dp),
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.SpaceBetween
@@ -217,14 +222,17 @@ fun SettingsScreen(
                                 fontWeight = FontWeight.Medium
                             )
                             Text(
-                                text = "Extract theme tones from your Android wallpaper (Android 12+)",
+                                text = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S)
+                                    "Use colors from your wallpaper across app surfaces"
+                                else "Wallpaper colors require Android 12 or later",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
                         Switch(
                             checked = state.dynamicColor,
-                            onCheckedChange = { viewModel.setDynamicColor(it) }
+                            onCheckedChange = { viewModel.setDynamicColor(it) },
+                            enabled = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
                         )
                     }
                 }
@@ -389,7 +397,7 @@ fun SettingsScreen(
                         Spacer(modifier = Modifier.width(12.dp))
                         Column {
                             Text(
-                                text = "Zainotes v1.0.0",
+                                text = "Zainotes v${com.zainotes.app.BuildConfig.VERSION_NAME}",
                                 style = MaterialTheme.typography.bodyLarge,
                                 fontWeight = FontWeight.Bold
                             )
