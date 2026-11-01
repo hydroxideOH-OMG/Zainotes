@@ -150,7 +150,7 @@ fun ZainotesNavGraph(
                         }
                     ) {
                         SettingsScreen(
-                            viewModel = SettingsViewModel(settingsRepository, backupManager),
+                            viewModel = SettingsViewModel(settingsRepository, backupManager, notesRepository),
                             onNavigateBack = { navController.popBackStack() }
                         )
                     }

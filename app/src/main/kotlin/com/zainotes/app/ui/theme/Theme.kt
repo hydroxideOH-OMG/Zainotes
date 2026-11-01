@@ -27,7 +27,6 @@ import androidx.core.view.WindowCompat
 enum class ThemeMode {
     SYSTEM,
     LIGHT,
-    DARK,
     AMOLED
 }
 
@@ -50,27 +49,6 @@ private val LightColorScheme = lightColorScheme(
     onSurface = OnSurfaceLight,
     surfaceVariant = SurfaceVariantLight,
     onSurfaceVariant = OnSurfaceVariantLight
-)
-
-private val DarkColorScheme = darkColorScheme(
-    primary = PrimaryDark,
-    onPrimary = OnPrimaryDark,
-    primaryContainer = PrimaryContainerDark,
-    onPrimaryContainer = OnPrimaryContainerDark,
-    secondary = SecondaryDark,
-    onSecondary = OnSecondaryDark,
-    secondaryContainer = SecondaryContainerDark,
-    onSecondaryContainer = OnSecondaryContainerDark,
-    tertiary = TertiaryDark,
-    onTertiary = OnTertiaryDark,
-    tertiaryContainer = TertiaryContainerDark,
-    onTertiaryContainer = OnTertiaryContainerDark,
-    background = BackgroundDark,
-    onBackground = OnBackgroundDark,
-    surface = SurfaceDark,
-    onSurface = OnSurfaceDark,
-    surfaceVariant = SurfaceVariantDark,
-    onSurfaceVariant = OnSurfaceVariantDark
 )
 
 private val AmoledColorScheme = darkColorScheme(
@@ -105,14 +83,14 @@ fun ZainotesTheme(
     val isDark = when (themeMode) {
         ThemeMode.SYSTEM -> systemInDark
         ThemeMode.LIGHT -> false
-        ThemeMode.DARK, ThemeMode.AMOLED -> true
+        ThemeMode.AMOLED -> true
     }
 
     val context = LocalContext.current
     val colorScheme = when {
         dynamicColor && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S -> {
             val dynamic = if (isDark) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
-            if (themeMode == ThemeMode.AMOLED) {
+            if (isDark) {
                 dynamic.copy(
                     background = AmoledBackground,
                     surface = AmoledSurface,
@@ -123,8 +101,7 @@ fun ZainotesTheme(
                 dynamic
             }
         }
-        themeMode == ThemeMode.AMOLED -> AmoledColorScheme
-        isDark -> DarkColorScheme
+        isDark -> AmoledColorScheme
         else -> LightColorScheme
     }
 

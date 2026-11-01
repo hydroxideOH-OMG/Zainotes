@@ -21,6 +21,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CropLandscape
 import androidx.compose.material.icons.filled.CropPortrait
 import androidx.compose.material.icons.filled.CropSquare
+import androidx.compose.material.icons.filled.DashboardCustomize
 import androidx.compose.material.icons.filled.ViewCarousel
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -73,6 +74,7 @@ fun CardSizePickerSheet(
                     CardSize.WIDE -> Icons.Default.CropLandscape
                     CardSize.COMPACT -> Icons.Default.CropPortrait
                     CardSize.HERO -> Icons.Default.ViewCarousel
+                    CardSize.FREEFORM -> Icons.Default.DashboardCustomize
                 }
 
                 val description = when (size) {
@@ -80,6 +82,7 @@ fun CardSizePickerSheet(
                     CardSize.WIDE -> "Spans across full 2-columns as a banner"
                     CardSize.COMPACT -> "Space-saving compact tile"
                     CardSize.HERO -> "Expanded spotlight card with full preview"
+                    CardSize.FREEFORM -> "Dynamic organic height showing all checklist items and blocks"
                 }
 
                 Row(

@@ -13,7 +13,8 @@ enum class CardSize(val label: String, val spanColumns: Int) {
     STANDARD("Standard", 1),
     WIDE("Wide Banner", 2),
     COMPACT("Compact", 1),
-    HERO("Expanded Hero", 2);
+    HERO("Expanded Hero", 2),
+    FREEFORM("Freeform Flow", 1);
 
     companion object {
         fun fromName(name: String?): CardSize {

@@ -54,6 +54,10 @@ class NotesRepository(private val noteDao: NoteDao) {
         noteDao.deleteNoteById(id)
     }
 
+    suspend fun deleteAllNotes() = withContext(Dispatchers.IO) {
+        noteDao.deleteAllNotes()
+    }
+
     suspend fun toggleTaskChecked(noteId: Long, blockId: String, isChecked: Boolean) = withContext(Dispatchers.IO) {
         val note = noteDao.getNoteByIdDirect(noteId) ?: return@withContext
         val updatedBlocks = note.blocks.map { block ->

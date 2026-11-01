@@ -40,12 +40,14 @@ import androidx.compose.material3.CheckboxDefaults
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -65,11 +67,12 @@ import com.zainotes.app.data.model.BlockType
 import com.zainotes.app.data.model.CardSize
 import com.zainotes.app.data.model.Note
 import com.zainotes.app.data.model.NoteBlock
+import com.zainotes.app.ui.components.CardSizePickerSheet
 import com.zainotes.app.ui.theme.CardShapeExpressive
 import com.zainotes.app.ui.theme.ExpressiveMotion
 import com.zainotes.app.ui.theme.NoteColor
 
-@OptIn(ExperimentalFoundationApi::class)
+@OptIn(ExperimentalFoundationApi::class, ExperimentalMaterial3Api::class)
 @Composable
 fun NoteCard(
     note: Note,
@@ -88,12 +91,15 @@ fun NoteCard(
 
     var showMenu by remember { mutableStateOf(false) }
     var confirmDelete by remember { mutableStateOf(false) }
+    var showSizePicker by remember { mutableStateOf(false) }
+    val sizeSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
     val maxPreviewItems = when (note.cardSize) {
         CardSize.COMPACT -> 2
         CardSize.STANDARD -> 4
         CardSize.WIDE -> 5
         CardSize.HERO -> 8
+        CardSize.FREEFORM -> Int.MAX_VALUE
     }
 
     Card(
@@ -169,35 +175,49 @@ fun NoteCard(
                             onDismissRequest = { showMenu = false }
                         ) {
                             DropdownMenuItem(
-                                text = { Text(if (note.isPinned) "Unpin Note" else "Pin Note") },
+                                text = { Text(if (note.isPinned) "Unpin note" else "Pin note") },
                                 onClick = {
                                     onTogglePin()
                                     showMenu = false
                                 }
                             )
                             DropdownMenuItem(
-                                text = { Text("Standard Size (1x1)") },
+                                text = { Text("Resize card...") },
                                 onClick = {
-                                    onCardSizeChange(CardSize.STANDARD)
+                                    showMenu = false
+                                    showSizePicker = true
+                                }
+                            )
+                            DropdownMenuItem(
+                                text = { Text("Freeform flow") },
+                                onClick = {
+                                    onCardSizeChange(CardSize.FREEFORM)
                                     showMenu = false
                                 }
                             )
                             DropdownMenuItem(
-                                text = { Text("Wide Banner (2x1)") },
+                                text = { Text("Wide banner (2x1)") },
                                 onClick = {
                                     onCardSizeChange(CardSize.WIDE)
                                     showMenu = false
                                 }
                             )
                             DropdownMenuItem(
-                                text = { Text("Compact Tile") },
+                                text = { Text("Standard tile (1x1)") },
+                                onClick = {
+                                    onCardSizeChange(CardSize.STANDARD)
+                                    showMenu = false
+                                }
+                            )
+                            DropdownMenuItem(
+                                text = { Text("Compact tile") },
                                 onClick = {
                                     onCardSizeChange(CardSize.COMPACT)
                                     showMenu = false
                                 }
                             )
                             DropdownMenuItem(
-                                text = { Text("Hero Spotlight") },
+                                text = { Text("Hero spotlight") },
                                 onClick = {
                                     onCardSizeChange(CardSize.HERO)
                                     showMenu = false
@@ -275,6 +295,18 @@ fun NoteCard(
                 }
             }
         }
+    }
+
+    if (showSizePicker) {
+        CardSizePickerSheet(
+            selectedSize = note.cardSize,
+            onSizeSelected = { size ->
+                onCardSizeChange(size)
+                showSizePicker = false
+            },
+            sheetState = sizeSheetState,
+            onDismissRequest = { showSizePicker = false }
+        )
     }
 
     if (confirmDelete) {

@@ -5,7 +5,6 @@ colors:
   primary-light: "#6750A4"
   primary-dark: "#D0BCFF"
   background-light: "#FEF7FF"
-  background-dark: "#141218"
   background-amoled: "#000000"
   surface-amoled: "#080808"
   coral-note: "#FFDAD6"
@@ -100,12 +99,12 @@ Material dynamic color is used when enabled and supported; the listed light/dark
 
 ### Neutral
 - **Light background** (`#FEF7FF`): static light theme canvas.
-- **Night background** (`#141218`): static dark theme canvas.
-- **AMOLED black** (`#000000`) and **AMOLED surface** (`#080808`): pure-black theme background and raised content.
+- **AMOLED pure black** (`#000000`) and **AMOLED surface** (`#080808`): the sole dark theme canvas for both manual AMOLED mode and system dark theme. Standard grayish dark mode is removed.
 - **Note colors:** Coral, Amber, Sage, Mint, Sky, Lavender, Rose, and Slate; `DEFAULT` resolves from the active Material surface role.
 
 ### Named Rules
 **The Semantic Chrome Rule.** App-level surfaces use Material color roles; user-selected note colors are reserved for note content and previews.
+**The AMOLED Dark Rule.** Dark mode is always true `#000000` pitch black to maximize OLED power efficiency and eliminate grayish dark backgrounds.
 
 ## Typography
 
@@ -124,7 +123,7 @@ Material dynamic color is used when enabled and supported; the listed light/dark
 
 ## Layout
 
-Home uses an adaptive staggered grid with a minimum cell width of 176dp; Wide and Hero notes span the available grid line. Search and filter controls precede the collection. Compact windows use a bottom NavigationBar for Notes and Settings; windows at or above 600dp use a NavigationRail. The editor is a focused destination and hides top-level navigation while editing. Settings content is vertically scrollable and width-bounded. Material app bars, Scaffold insets, and IME insets keep content clear of system UI.
+Home uses an adaptive staggered grid with freeform note sizing: notes can span standard tiles, compact previews, wide banners, hero spotlights, or flow organically with full content length (`FREEFORM`). The homepage masthead features expressive filter chips (All, Tasks, Pinned) and a quick Freeform layout switcher, with the search bar removed for an uncluttered note-taking experience. Compact windows use a bottom NavigationBar for Notes and Settings; windows at or above 600dp use a NavigationRail. The editor is a focused destination and hides top-level navigation while editing. Settings content is vertically scrollable, width-bounded, and organized into semantic Material 3 cards. Material app bars, Scaffold insets, and IME insets keep content clear of system UI.
 
 The component rhythm uses 8–20dp spacing. Interactive controls retain at least a 48dp touch area where specified by the component.
 

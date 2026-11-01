@@ -55,6 +55,9 @@ interface NoteDao {
     @Query("DELETE FROM notes WHERE id = :id")
     suspend fun deleteNoteById(id: Long)
 
+    @Query("DELETE FROM notes")
+    suspend fun deleteAllNotes()
+
     @Query("UPDATE notes SET cardSize = :cardSize, updatedAt = :updatedAt WHERE id = :id")
     suspend fun updateCardSize(id: Long, cardSize: CardSize, updatedAt: Long = System.currentTimeMillis())
 

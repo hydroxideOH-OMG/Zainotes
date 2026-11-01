@@ -30,8 +30,11 @@ enum class HomeFilter {
 
 data class HomeUiState(
     val notes: List<Note> = emptyList(),
-    val searchQuery: String = "",
+    val totalCount: Int = 0,
+    val tasksCount: Int = 0,
+    val pinnedCount: Int = 0,
     val activeFilter: HomeFilter = HomeFilter.ALL,
+    val isFreeformGrid: Boolean = false,
     val isLoading: Boolean = false
 )
 
@@ -39,34 +42,31 @@ class HomeViewModel(
     private val repository: NotesRepository
 ) : ViewModel() {
 
-    private val _searchQuery = MutableStateFlow("")
     private val _activeFilter = MutableStateFlow(HomeFilter.ALL)
+    private val _isFreeformGrid = MutableStateFlow(false)
 
     val uiState: StateFlow<HomeUiState> = combine(
         repository.activeNotes,
-        _searchQuery,
-        _activeFilter
-    ) { notes, query, filter ->
-        val filtered = notes.filter { note ->
-            val matchesQuery = if (query.isBlank()) {
-                true
-            } else {
-                note.title.contains(query, ignoreCase = true) ||
-                        note.blocks.any { it.content.contains(query, ignoreCase = true) }
-            }
+        _activeFilter,
+        _isFreeformGrid
+    ) { notes, filter, freeform ->
+        val total = notes.size
+        val tasks = notes.count { it.totalTasksCount > 0 }
+        val pinned = notes.count { it.isPinned }
 
-            val matchesFilter = when (filter) {
-                HomeFilter.ALL -> true
-                HomeFilter.TASKS -> note.totalTasksCount > 0
-                HomeFilter.PINNED -> note.isPinned
-            }
-
-            matchesQuery && matchesFilter
+        val filtered = when (filter) {
+            HomeFilter.ALL -> notes
+            HomeFilter.TASKS -> notes.filter { it.totalTasksCount > 0 }
+            HomeFilter.PINNED -> notes.filter { it.isPinned }
         }
+
         HomeUiState(
             notes = filtered,
-            searchQuery = query,
+            totalCount = total,
+            tasksCount = tasks,
+            pinnedCount = pinned,
             activeFilter = filter,
+            isFreeformGrid = freeform,
             isLoading = false
         )
     }.stateIn(
@@ -75,12 +75,12 @@ class HomeViewModel(
         initialValue = HomeUiState(isLoading = true)
     )
 
-    fun onSearchQueryChanged(query: String) {
-        _searchQuery.value = query
-    }
-
     fun onFilterChanged(filter: HomeFilter) {
         _activeFilter.value = filter
+    }
+
+    fun toggleFreeformGrid() {
+        _isFreeformGrid.value = !_isFreeformGrid.value
     }
 
     fun toggleTaskChecked(noteId: Long, blockId: String, isChecked: Boolean) {
