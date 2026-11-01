@@ -135,7 +135,7 @@ fun BlockToolbar(
             // Note Color
             IconButton(
                 onClick = onOpenColorPicker,
-                modifier = Modifier.size(36.dp)
+                modifier = Modifier.size(48.dp)
             ) {
                 Icon(
                     imageVector = Icons.Default.ColorLens,
@@ -148,7 +148,7 @@ fun BlockToolbar(
             // Note Card Size
             IconButton(
                 onClick = onOpenSizePicker,
-                modifier = Modifier.size(36.dp)
+                modifier = Modifier.size(48.dp)
             ) {
                 Icon(
                     imageVector = Icons.Default.AspectRatio,

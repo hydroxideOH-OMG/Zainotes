@@ -133,16 +133,22 @@ fun HomeScreen(
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.Center
                 ) {
-                    Icon(Icons.Default.EditNote, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(64.dp))
+                    val hasActiveCriteria = state.searchQuery.isNotBlank() || state.activeFilter != HomeFilter.ALL
+                    Icon(
+                        if (hasActiveCriteria) Icons.Default.Search else Icons.Default.EditNote,
+                        null,
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(64.dp)
+                    )
                     Spacer(Modifier.height(16.dp))
                     Text(
-                        if (state.searchQuery.isNotBlank()) "No notes found" else "Start with one thought",
+                        if (hasActiveCriteria) "No notes match" else "Start with one thought",
                         style = MaterialTheme.typography.headlineSmall,
                         fontWeight = FontWeight.SemiBold,
                         textAlign = TextAlign.Center
                     )
                     Text(
-                        if (state.searchQuery.isNotBlank()) "Try another search or clear the query."
+                        if (hasActiveCriteria) "Try another search, or switch to All notes."
                         else "Create a note, add a checklist, or collect ideas in one flexible canvas.",
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,

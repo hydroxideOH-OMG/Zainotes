@@ -84,7 +84,11 @@ fun ZainotesNavGraph(
         ) { contentPadding ->
             Row(Modifier.fillMaxSize().padding(contentPadding)) {
                 if (useRail) {
-                    NavigationRail(modifier = Modifier.windowInsetsPadding(WindowInsets.statusBars)) {
+                    NavigationRail(
+                        modifier = Modifier
+                            .windowInsetsPadding(WindowInsets.statusBars)
+                            .windowInsetsPadding(WindowInsets.navigationBars)
+                    ) {
                         NavigationRailItem(
                             selected = !isSettings,
                             onClick = { navController.navigateTopLevel(Screen.Home.route) },

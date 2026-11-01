@@ -317,7 +317,7 @@ private fun NoteBlockPreviewItem(
                         uncheckedColor = cardContentColor.copy(alpha = 0.6f),
                         checkmarkColor = MaterialTheme.colorScheme.onPrimary
                     ),
-                    modifier = Modifier.size(24.dp)
+                    modifier = Modifier.size(48.dp)
                 )
                 Spacer(modifier = Modifier.width(6.dp))
                 Text(
