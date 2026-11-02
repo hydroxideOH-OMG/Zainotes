@@ -22,6 +22,15 @@ android {
         }
     }
 
+    signingConfigs {
+        create("debugConfig") {
+            storeFile = file("${rootDir}/debug.keystore")
+            storePassword = "android"
+            keyAlias = "androiddebugkey"
+            keyPassword = "android"
+        }
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = false
@@ -31,8 +40,7 @@ android {
             )
         }
         debug {
-            applicationIdSuffix = ".debug"
-            isDebuggable = true
+            signingConfig = signingConfigs.getByName("debugConfig")
         }
     }
 
