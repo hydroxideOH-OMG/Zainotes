@@ -5,14 +5,14 @@
 
 package com.zainotes.app.ui.components
 
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -30,6 +30,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -45,7 +46,6 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.zainotes.app.data.model.CardSize
@@ -56,7 +56,7 @@ import kotlin.math.roundToInt
  * Interactive Free-form Cropping & Resizing Overlay.
  *
  * Provides an image-crop style interactive canvas overlay with drag handles (top-left,
- * top-right, bottom-left, bottom-right, and edges) to resize a note card interactively.
+ * top-right, bottom-left, bottom-right) to resize a note card interactively.
  */
 @Composable
 fun FreeformCropResizeDialog(
@@ -80,7 +80,7 @@ fun FreeformCropResizeDialog(
         var cropTop by remember { mutableFloatStateOf(0f) }
         var cropRight by remember { mutableFloatStateOf(0f) }
         var cropBottom by remember { mutableFloatStateOf(0f) }
-        var isInitialized by remember { mutableFloatStateOf(false) }
+        var isInitialized by remember { mutableStateOf(false) }
 
         // Live computed resulting size
         val currentAspect = remember(cropLeft, cropRight, cropTop, cropBottom) {
@@ -108,7 +108,7 @@ fun FreeformCropResizeDialog(
                 .onGloballyPositioned { coords ->
                     containerWidth = coords.size.width.toFloat()
                     containerHeight = coords.size.height.toFloat()
-                    if (!isInitialized && containerWidth > 0 && containerHeight > 0) {
+                    if (!isInitialized && containerWidth > 0f && containerHeight > 0f) {
                         val initPaddingX = containerWidth * 0.08f
                         val initPaddingY = containerHeight * 0.22f
                         cropLeft = initPaddingX
@@ -253,10 +253,10 @@ fun FreeformCropResizeDialog(
                     .align(Alignment.BottomCenter)
                     .padding(bottom = 32.dp, start = 32.dp, end = 32.dp)
             ) {
-                androidx.compose.foundation.layout.Row(
+                Row(
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = androidx.compose.foundation.layout.Arrangement.SpaceBetween,
-                    modifier = Modifier.androidx.compose.foundation.layout.fillMaxWidth()
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    modifier = Modifier.fillMaxWidth()
                 ) {
                     // Cancel FAB
                     FloatingActionButton(
