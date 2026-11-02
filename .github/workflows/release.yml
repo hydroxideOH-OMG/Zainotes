@@ -58,8 +58,17 @@ jobs:
               --key-pass pass:"${KEY_PASS:-$KEYSTORE_PASS}" \
               --out release-output/Zainotes-signed.apk \
               "$RELEASE_APK"
+          elif [ -f "keystore/release.keystore" ]; then
+            echo "Signing with repository permanent release keystore using $APKSIGNER..."
+            "$APKSIGNER" sign \
+              --ks keystore/release.keystore \
+              --ks-pass pass:***REMOVED*** \
+              --ks-key-alias zainotes \
+              --key-pass pass:***REMOVED*** \
+              --out release-output/Zainotes-signed.apk \
+              "$RELEASE_APK"
           else
-            echo "No custom release secrets configured. Signing with automated release key using $APKSIGNER..."
+            echo "Fallback: Generating and signing with automated release key using $APKSIGNER..."
             keytool -genkeypair -v -keystore ci.keystore -storepass android -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Zainotes, O=OpenSource, C=US"
             "$APKSIGNER" sign \
               --ks ci.keystore \
