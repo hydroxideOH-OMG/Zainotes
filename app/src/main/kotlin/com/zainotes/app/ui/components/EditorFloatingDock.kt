@@ -112,8 +112,8 @@ fun EditorFloatingDock(
                         spotColor = MaterialTheme.colorScheme.scrim.copy(alpha = 0.25f)
                     ),
                 shape = CircleShape,
-                color = MaterialTheme.colorScheme.surfaceContainerHighest,
-                tonalElevation = 3.dp,
+                color = MaterialTheme.colorScheme.surfaceContainer,
+                tonalElevation = 0.dp,
                 shadowElevation = 6.dp
             ) {
                 Row(

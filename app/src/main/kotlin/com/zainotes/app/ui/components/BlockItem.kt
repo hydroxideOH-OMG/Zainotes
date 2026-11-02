@@ -72,7 +72,8 @@ fun BlockItem(
     onMoveDown: () -> Unit,
     onEnterPressed: () -> Unit,
     contentColor: Color,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    numberedIndex: Int = 1
 ) {
     var showMenu by remember { mutableStateOf(false) }
 
@@ -113,7 +114,7 @@ fun BlockItem(
             }
             BlockType.NUMBERED -> {
                 Text(
-                    text = "${index + 1}.",
+                    text = "$numberedIndex.",
                     style = MaterialTheme.typography.bodyLarge.copy(
                         fontWeight = FontWeight.Bold,
                         color = contentColor.copy(alpha = 0.85f)

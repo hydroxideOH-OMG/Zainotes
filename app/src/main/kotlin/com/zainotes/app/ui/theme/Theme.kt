@@ -70,7 +70,13 @@ private val AmoledColorScheme = darkColorScheme(
     onSurface = OnSurfaceDark,
     surfaceVariant = AmoledSurfaceVariant,
     onSurfaceVariant = OnSurfaceVariantDark,
-    surfaceContainer = AmoledSurfaceContainer
+    surfaceDim = AmoledSurfaceDim,
+    surfaceBright = AmoledSurfaceBright,
+    surfaceContainerLowest = AmoledSurfaceContainerLowest,
+    surfaceContainerLow = AmoledSurfaceContainerLow,
+    surfaceContainer = AmoledSurfaceContainer,
+    surfaceContainerHigh = AmoledSurfaceContainerHigh,
+    surfaceContainerHighest = AmoledSurfaceContainerHighest
 )
 
 @Composable
@@ -88,6 +94,8 @@ fun ZainotesTheme(
 
     val context = LocalContext.current
     val colorScheme = when {
+        // When AMOLED is selected, strictly prioritize pure AMOLED black
+        themeMode == ThemeMode.AMOLED -> AmoledColorScheme
         dynamicColor && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S -> {
             val dynamic = if (isDark) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
             if (isDark) {
@@ -95,7 +103,13 @@ fun ZainotesTheme(
                     background = AmoledBackground,
                     surface = AmoledSurface,
                     surfaceVariant = AmoledSurfaceVariant,
-                    surfaceContainer = AmoledSurfaceContainer
+                    surfaceDim = AmoledSurfaceDim,
+                    surfaceBright = AmoledSurfaceBright,
+                    surfaceContainerLowest = AmoledSurfaceContainerLowest,
+                    surfaceContainerLow = AmoledSurfaceContainerLow,
+                    surfaceContainer = AmoledSurfaceContainer,
+                    surfaceContainerHigh = AmoledSurfaceContainerHigh,
+                    surfaceContainerHighest = AmoledSurfaceContainerHighest
                 )
             } else {
                 dynamic

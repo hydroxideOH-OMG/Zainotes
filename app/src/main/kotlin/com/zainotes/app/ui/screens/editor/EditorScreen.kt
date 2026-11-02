@@ -47,6 +47,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.zainotes.app.data.model.BlockType
 import com.zainotes.app.data.model.NoteBackgroundTheme
+import com.zainotes.app.data.model.getNumberedIndex
 import com.zainotes.app.ui.components.BlockItem
 import com.zainotes.app.ui.components.CardSizePickerSheet
 import com.zainotes.app.ui.components.EditorFloatingDock
@@ -201,7 +202,8 @@ fun EditorScreen(
                                 val nextType = if (block.type == BlockType.NUMBERED) BlockType.NUMBERED else BlockType.TEXT
                                 viewModel.addBlock(nextType, index + 1)
                             },
-                            contentColor = animatedContentColor
+                            contentColor = animatedContentColor,
+                            numberedIndex = state.blocks.getNumberedIndex(index)
                         )
                     }
 

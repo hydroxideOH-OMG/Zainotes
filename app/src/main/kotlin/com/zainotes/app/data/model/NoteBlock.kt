@@ -26,3 +26,18 @@ data class NoteBlock(
     val isChecked: Boolean = false,
     val order: Int = 0
 )
+
+/**
+ * Calculates the sequential list number for a [BlockType.NUMBERED] block,
+ * restarting at 1 for each consecutive group of numbered blocks.
+ */
+fun List<NoteBlock>.getNumberedIndex(index: Int): Int {
+    if (index !in indices || this[index].type != BlockType.NUMBERED) return 1
+    var count = 1
+    var i = index - 1
+    while (i >= 0 && this[i].type == BlockType.NUMBERED) {
+        count++
+        i--
+    }
+    return count
+}
