@@ -59,9 +59,15 @@ val OnSurfaceVariantDark = Color(0xFFCAC4D0)
 
 // Pure AMOLED Black Palette
 val AmoledBackground = Color(0xFF000000)
-val AmoledSurface = Color(0xFF080808)
-val AmoledSurfaceVariant = Color(0xFF18181A)
-val AmoledSurfaceContainer = Color(0xFF121212)
+val AmoledSurface = Color(0xFF000000)
+val AmoledSurfaceDim = Color(0xFF000000)
+val AmoledSurfaceBright = Color(0xFF141414)
+val AmoledSurfaceVariant = Color(0xFF141416)
+val AmoledSurfaceContainerLowest = Color(0xFF000000)
+val AmoledSurfaceContainerLow = Color(0xFF080808)
+val AmoledSurfaceContainer = Color(0xFF101010)
+val AmoledSurfaceContainerHigh = Color(0xFF161616)
+val AmoledSurfaceContainerHighest = Color(0xFF1C1C1E)
 
 /**
  * Vibrant Expressive Note Colors.

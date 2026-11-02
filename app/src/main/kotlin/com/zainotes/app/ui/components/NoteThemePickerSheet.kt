@@ -66,7 +66,9 @@ fun NoteThemePickerSheet(
 
     ModalBottomSheet(
         onDismissRequest = onDismissRequest,
-        sheetState = sheetState
+        sheetState = sheetState,
+        containerColor = MaterialTheme.colorScheme.surfaceContainer,
+        tonalElevation = 0.dp
     ) {
         Column(
             modifier = Modifier

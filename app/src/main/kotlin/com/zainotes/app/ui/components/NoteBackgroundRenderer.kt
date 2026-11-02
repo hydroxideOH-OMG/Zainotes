@@ -11,9 +11,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.RoundRect
-import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
@@ -61,7 +59,7 @@ fun NoteBackgroundRenderer(
 
 // 1. Ruled Lines Pattern
 private fun DrawScope.drawRuledPattern(tint: Color) {
-    val lineColor = tint.copy(alpha = 0.18f)
+    val lineColor = tint.copy(alpha = 0.22f)
     val strokeWidth = 1.2.dp.toPx()
     val step = 28.dp.toPx()
     var y = 32.dp.toPx()
@@ -79,7 +77,7 @@ private fun DrawScope.drawRuledPattern(tint: Color) {
 
 // 2. Graph Grid Pattern
 private fun DrawScope.drawGridPattern(tint: Color) {
-    val gridColor = tint.copy(alpha = 0.12f)
+    val gridColor = tint.copy(alpha = 0.18f)
     val strokeWidth = 1.dp.toPx()
     val step = 24.dp.toPx()
 
@@ -108,8 +106,8 @@ private fun DrawScope.drawGridPattern(tint: Color) {
 
 // 3. Dot Matrix Pattern
 private fun DrawScope.drawDotsPattern(tint: Color) {
-    val dotColor = tint.copy(alpha = 0.22f)
-    val dotRadius = 1.5.dp.toPx()
+    val dotColor = tint.copy(alpha = 0.28f)
+    val dotRadius = 1.8.dp.toPx()
     val step = 22.dp.toPx()
 
     var x = step
@@ -127,15 +125,28 @@ private fun DrawScope.drawDotsPattern(tint: Color) {
     }
 }
 
+/**
+ * Calculates a bounded anchor and scale for illustrations so they fit nicely
+ * in either a compact card preview or a full-screen note editor canvas.
+ */
+private data class IllustrationBounds(val originX: Float, val originY: Float, val scale: Float)
+
+private fun DrawScope.calculateIllustrationBounds(targetWidthDp: Float = 140f, targetHeightDp: Float = 135f): IllustrationBounds {
+    val minDim = size.width.coerceAtMost(size.height)
+    val scale = (minDim / 240f).coerceIn(0.55f, 1.45f)
+    val actualWidth = targetWidthDp.dp.toPx() * scale
+    val actualHeight = targetHeightDp.dp.toPx() * scale
+    val originX = (size.width - actualWidth - 8.dp.toPx()).coerceAtLeast(0f)
+    val originY = (size.height - actualHeight - 8.dp.toPx()).coerceAtLeast(0f)
+    return IllustrationBounds(originX, originY, scale)
+}
+
 // 4. Groceries (Shopping bag, stalks/baguette, apple)
 private fun DrawScope.drawGroceriesIllustration(tint: Color) {
-    val strokeColor = tint.copy(alpha = 0.24f)
-    val fillColor = tint.copy(alpha = 0.10f)
-    val stroke = Stroke(width = 2.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round)
-
-    val scale = (size.width.coerceAtMost(size.height) / 300f).coerceIn(0.65f, 1.4f)
-    val originX = size.width - (140.dp.toPx() * scale)
-    val originY = size.height - (130.dp.toPx() * scale)
+    val strokeColor = tint.copy(alpha = 0.40f)
+    val fillColor = tint.copy(alpha = 0.16f)
+    val (originX, originY, scale) = calculateIllustrationBounds(140f, 135f)
+    val stroke = Stroke(width = 2.4.dp.toPx() * scale, cap = StrokeCap.Round, join = StrokeJoin.Round)
 
     // Bag body
     val bagPath = Path().apply {
@@ -184,13 +195,10 @@ private fun DrawScope.drawGroceriesIllustration(tint: Color) {
 
 // 5. Food & Cooking (Chef hat, fork, spoon, pan)
 private fun DrawScope.drawFoodIllustration(tint: Color) {
-    val strokeColor = tint.copy(alpha = 0.24f)
-    val fillColor = tint.copy(alpha = 0.10f)
-    val stroke = Stroke(width = 2.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round)
-
-    val scale = (size.width.coerceAtMost(size.height) / 300f).coerceIn(0.65f, 1.4f)
-    val originX = size.width - (145.dp.toPx() * scale)
-    val originY = size.height - (130.dp.toPx() * scale)
+    val strokeColor = tint.copy(alpha = 0.40f)
+    val fillColor = tint.copy(alpha = 0.16f)
+    val (originX, originY, scale) = calculateIllustrationBounds(145f, 130f)
+    val stroke = Stroke(width = 2.4.dp.toPx() * scale, cap = StrokeCap.Round, join = StrokeJoin.Round)
 
     // Pan / Bowl
     val panPath = Path().apply {
@@ -234,13 +242,10 @@ private fun DrawScope.drawFoodIllustration(tint: Color) {
 
 // 6. Music (Headphones & floating musical notes)
 private fun DrawScope.drawMusicIllustration(tint: Color) {
-    val strokeColor = tint.copy(alpha = 0.26f)
-    val fillColor = tint.copy(alpha = 0.12f)
-    val stroke = Stroke(width = 2.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round)
-
-    val scale = (size.width.coerceAtMost(size.height) / 300f).coerceIn(0.65f, 1.4f)
-    val originX = size.width - (140.dp.toPx() * scale)
-    val originY = size.height - (130.dp.toPx() * scale)
+    val strokeColor = tint.copy(alpha = 0.42f)
+    val fillColor = tint.copy(alpha = 0.18f)
+    val (originX, originY, scale) = calculateIllustrationBounds(140f, 130f)
+    val stroke = Stroke(width = 2.4.dp.toPx() * scale, cap = StrokeCap.Round, join = StrokeJoin.Round)
 
     // Headband arc
     val headband = Path().apply {
@@ -289,20 +294,17 @@ private fun DrawScope.drawMusicIllustration(tint: Color) {
 
 // 7. Recipes & Baking (Whisk, bowl, rolling pin)
 private fun DrawScope.drawRecipesIllustration(tint: Color) {
-    val strokeColor = tint.copy(alpha = 0.24f)
-    val fillColor = tint.copy(alpha = 0.10f)
-    val stroke = Stroke(width = 2.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round)
-
-    val scale = (size.width.coerceAtMost(size.height) / 300f).coerceIn(0.65f, 1.4f)
-    val originX = size.width - (140.dp.toPx() * scale)
-    val originY = size.height - (130.dp.toPx() * scale)
+    val strokeColor = tint.copy(alpha = 0.40f)
+    val fillColor = tint.copy(alpha = 0.16f)
+    val (originX, originY, scale) = calculateIllustrationBounds(140f, 130f)
+    val stroke = Stroke(width = 2.4.dp.toPx() * scale, cap = StrokeCap.Round, join = StrokeJoin.Round)
 
     // Rolling pin
     val pin = Path().apply {
         moveTo(originX + 15.dp.toPx() * scale, originY + 30.dp.toPx() * scale)
         lineTo(originX + 105.dp.toPx() * scale, originY + 105.dp.toPx() * scale)
     }
-    drawPath(pin, strokeColor, style = Stroke(width = 8.dp.toPx() * scale, cap = StrokeCap.Round))
+    drawPath(pin, strokeColor, style = Stroke(width = 7.dp.toPx() * scale, cap = StrokeCap.Round))
 
     // Whisk wires
     val whiskPath = Path().apply {
@@ -323,13 +325,10 @@ private fun DrawScope.drawRecipesIllustration(tint: Color) {
 
 // 8. Notes & Doodles (Notepad, fountain pen, clips)
 private fun DrawScope.drawNotesIllustration(tint: Color) {
-    val strokeColor = tint.copy(alpha = 0.25f)
-    val fillColor = tint.copy(alpha = 0.10f)
-    val stroke = Stroke(width = 2.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round)
-
-    val scale = (size.width.coerceAtMost(size.height) / 300f).coerceIn(0.65f, 1.4f)
-    val originX = size.width - (135.dp.toPx() * scale)
-    val originY = size.height - (125.dp.toPx() * scale)
+    val strokeColor = tint.copy(alpha = 0.40f)
+    val fillColor = tint.copy(alpha = 0.16f)
+    val (originX, originY, scale) = calculateIllustrationBounds(135f, 125f)
+    val stroke = Stroke(width = 2.4.dp.toPx() * scale, cap = StrokeCap.Round, join = StrokeJoin.Round)
 
     // Tilted notebook page
     val pad = Path().apply {
@@ -364,13 +363,10 @@ private fun DrawScope.drawNotesIllustration(tint: Color) {
 
 // 9. Travel & Places (Mountains, airplane trail)
 private fun DrawScope.drawPlacesIllustration(tint: Color) {
-    val strokeColor = tint.copy(alpha = 0.25f)
-    val fillColor = tint.copy(alpha = 0.10f)
-    val stroke = Stroke(width = 2.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round)
-
-    val scale = (size.width.coerceAtMost(size.height) / 300f).coerceIn(0.65f, 1.4f)
-    val originX = size.width - (145.dp.toPx() * scale)
-    val originY = size.height - (125.dp.toPx() * scale)
+    val strokeColor = tint.copy(alpha = 0.40f)
+    val fillColor = tint.copy(alpha = 0.16f)
+    val (originX, originY, scale) = calculateIllustrationBounds(145f, 125f)
+    val stroke = Stroke(width = 2.4.dp.toPx() * scale, cap = StrokeCap.Round, join = StrokeJoin.Round)
 
     // Mountain silhouettes
     val mountains = Path().apply {
@@ -393,7 +389,7 @@ private fun DrawScope.drawPlacesIllustration(tint: Color) {
             originX + 130.dp.toPx() * scale, originY + 18.dp.toPx() * scale
         )
     }
-    drawPath(airplaneTrail, strokeColor, style = Stroke(width = 1.5.dp.toPx() * scale, cap = StrokeCap.Round))
+    drawPath(airplaneTrail, strokeColor, style = Stroke(width = 1.8.dp.toPx() * scale, cap = StrokeCap.Round))
 
     // Tiny plane at end of trail
     val plane = Path().apply {
@@ -408,13 +404,10 @@ private fun DrawScope.drawPlacesIllustration(tint: Color) {
 
 // 10. Cinema & Video (Clapperboard, film roll)
 private fun DrawScope.drawVideoIllustration(tint: Color) {
-    val strokeColor = tint.copy(alpha = 0.25f)
-    val fillColor = tint.copy(alpha = 0.10f)
-    val stroke = Stroke(width = 2.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round)
-
-    val scale = (size.width.coerceAtMost(size.height) / 300f).coerceIn(0.65f, 1.4f)
-    val originX = size.width - (140.dp.toPx() * scale)
-    val originY = size.height - (125.dp.toPx() * scale)
+    val strokeColor = tint.copy(alpha = 0.40f)
+    val fillColor = tint.copy(alpha = 0.16f)
+    val (originX, originY, scale) = calculateIllustrationBounds(140f, 125f)
+    val stroke = Stroke(width = 2.4.dp.toPx() * scale, cap = StrokeCap.Round, join = StrokeJoin.Round)
 
     // Clapperboard body
     val board = RoundRect(
@@ -445,13 +438,10 @@ private fun DrawScope.drawVideoIllustration(tint: Color) {
 
 // 11. Celebration (Balloons, party popper, confetti)
 private fun DrawScope.drawCelebrationIllustration(tint: Color) {
-    val strokeColor = tint.copy(alpha = 0.26f)
-    val fillColor = tint.copy(alpha = 0.12f)
-    val stroke = Stroke(width = 2.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round)
-
-    val scale = (size.width.coerceAtMost(size.height) / 300f).coerceIn(0.65f, 1.4f)
-    val originX = size.width - (140.dp.toPx() * scale)
-    val originY = size.height - (130.dp.toPx() * scale)
+    val strokeColor = tint.copy(alpha = 0.42f)
+    val fillColor = tint.copy(alpha = 0.18f)
+    val (originX, originY, scale) = calculateIllustrationBounds(140f, 130f)
+    val stroke = Stroke(width = 2.4.dp.toPx() * scale, cap = StrokeCap.Round, join = StrokeJoin.Round)
 
     // Balloon 1
     val b1Center = Offset(originX + 45.dp.toPx() * scale, originY + 45.dp.toPx() * scale)
@@ -481,13 +471,10 @@ private fun DrawScope.drawCelebrationIllustration(tint: Color) {
 
 // 12. Storm & Weather (Storm cloud, lightning bolt, raindrops)
 private fun DrawScope.drawStormIllustration(tint: Color) {
-    val strokeColor = tint.copy(alpha = 0.26f)
-    val fillColor = tint.copy(alpha = 0.12f)
-    val stroke = Stroke(width = 2.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round)
-
-    val scale = (size.width.coerceAtMost(size.height) / 300f).coerceIn(0.65f, 1.4f)
-    val originX = size.width - (145.dp.toPx() * scale)
-    val originY = size.height - (130.dp.toPx() * scale)
+    val strokeColor = tint.copy(alpha = 0.42f)
+    val fillColor = tint.copy(alpha = 0.18f)
+    val (originX, originY, scale) = calculateIllustrationBounds(145f, 130f)
+    val stroke = Stroke(width = 2.4.dp.toPx() * scale, cap = StrokeCap.Round, join = StrokeJoin.Round)
 
     // Cloud bubbles
     val cloud = Path().apply {
@@ -529,13 +516,10 @@ private fun DrawScope.drawStormIllustration(tint: Color) {
 
 // 13. Night Sky & Dusk (Crescent moon, shining stars, constellation)
 private fun DrawScope.drawDuskIllustration(tint: Color) {
-    val strokeColor = tint.copy(alpha = 0.28f)
-    val fillColor = tint.copy(alpha = 0.12f)
-    val stroke = Stroke(width = 2.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round)
-
-    val scale = (size.width.coerceAtMost(size.height) / 300f).coerceIn(0.65f, 1.4f)
-    val originX = size.width - (140.dp.toPx() * scale)
-    val originY = size.height - (130.dp.toPx() * scale)
+    val strokeColor = tint.copy(alpha = 0.44f)
+    val fillColor = tint.copy(alpha = 0.18f)
+    val (originX, originY, scale) = calculateIllustrationBounds(140f, 130f)
+    val stroke = Stroke(width = 2.4.dp.toPx() * scale, cap = StrokeCap.Round, join = StrokeJoin.Round)
 
     // Crescent moon
     val moon = Path().apply {
@@ -563,13 +547,10 @@ private fun DrawScope.drawDuskIllustration(tint: Color) {
 
 // 14. Flora & Nature (Monstera tropical leaf & botanical foliage)
 private fun DrawScope.drawNatureIllustration(tint: Color) {
-    val strokeColor = tint.copy(alpha = 0.25f)
-    val fillColor = tint.copy(alpha = 0.10f)
-    val stroke = Stroke(width = 2.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round)
-
-    val scale = (size.width.coerceAtMost(size.height) / 300f).coerceIn(0.65f, 1.4f)
-    val originX = size.width - (145.dp.toPx() * scale)
-    val originY = size.height - (130.dp.toPx() * scale)
+    val strokeColor = tint.copy(alpha = 0.40f)
+    val fillColor = tint.copy(alpha = 0.16f)
+    val (originX, originY, scale) = calculateIllustrationBounds(145f, 130f)
+    val stroke = Stroke(width = 2.4.dp.toPx() * scale, cap = StrokeCap.Round, join = StrokeJoin.Round)
 
     // Monstera leaf outline
     val leaf = Path().apply {
@@ -604,12 +585,9 @@ private fun DrawScope.drawNatureIllustration(tint: Color) {
 
 // 15. Doodles & Scribbles (Creative spirals & geometric squiggles)
 private fun DrawScope.drawDoodlesIllustration(tint: Color) {
-    val strokeColor = tint.copy(alpha = 0.26f)
-    val stroke = Stroke(width = 2.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round)
-
-    val scale = (size.width.coerceAtMost(size.height) / 300f).coerceIn(0.65f, 1.4f)
-    val originX = size.width - (140.dp.toPx() * scale)
-    val originY = size.height - (125.dp.toPx() * scale)
+    val strokeColor = tint.copy(alpha = 0.42f)
+    val (originX, originY, scale) = calculateIllustrationBounds(140f, 125f)
+    val stroke = Stroke(width = 2.4.dp.toPx() * scale, cap = StrokeCap.Round, join = StrokeJoin.Round)
 
     // Spiral swirl
     val spiral = Path().apply {

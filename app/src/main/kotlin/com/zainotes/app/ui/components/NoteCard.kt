@@ -68,7 +68,9 @@ import com.zainotes.app.data.model.CardSize
 import com.zainotes.app.data.model.Note
 import com.zainotes.app.data.model.NoteBackgroundTheme
 import com.zainotes.app.data.model.NoteBlock
+import com.zainotes.app.data.model.getNumberedIndex
 import com.zainotes.app.ui.components.CardSizePickerSheet
+import com.zainotes.app.ui.components.FreeformCropResizeDialog
 import com.zainotes.app.ui.theme.CardShapeExpressive
 import com.zainotes.app.ui.theme.ExpressiveMotion
 import com.zainotes.app.ui.theme.NoteColor
@@ -93,6 +95,7 @@ fun NoteCard(
     var showMenu by remember { mutableStateOf(false) }
     var confirmDelete by remember { mutableStateOf(false) }
     var showSizePicker by remember { mutableStateOf(false) }
+    var showFreeformCropDialog by remember { mutableStateOf(false) }
     val sizeSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
     val maxPreviewItems = when (note.cardSize) {
@@ -190,17 +193,17 @@ fun NoteCard(
                                 }
                             )
                             DropdownMenuItem(
+                                text = { Text("Free-form sizing (Crop resize)") },
+                                onClick = {
+                                    showMenu = false
+                                    showFreeformCropDialog = true
+                                }
+                            )
+                            DropdownMenuItem(
                                 text = { Text("Resize card...") },
                                 onClick = {
                                     showMenu = false
                                     showSizePicker = true
-                                }
-                            )
-                            DropdownMenuItem(
-                                text = { Text("Freeform flow") },
-                                onClick = {
-                                    onCardSizeChange(CardSize.FREEFORM)
-                                    showMenu = false
                                 }
                             )
                             DropdownMenuItem(
@@ -282,10 +285,11 @@ fun NoteCard(
                     verticalArrangement = Arrangement.spacedBy(4.dp),
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    previewBlocks.forEach { block ->
+                    previewBlocks.forEachIndexed { index, block ->
                         NoteBlockPreviewItem(
                             block = block,
                             cardContentColor = cardContent,
+                            numberedIndex = note.blocks.getNumberedIndex(index),
                             onTaskToggle = { isChecked ->
                                 onTaskToggle(block.id, isChecked)
                             }
@@ -304,6 +308,17 @@ fun NoteCard(
             }
         }
     }
+    }
+
+    if (showFreeformCropDialog) {
+        FreeformCropResizeDialog(
+            note = note,
+            onConfirmSize = { newSize ->
+                onCardSizeChange(newSize)
+                showFreeformCropDialog = false
+            },
+            onDismiss = { showFreeformCropDialog = false }
+        )
     }
 
     if (showSizePicker) {
@@ -337,6 +352,7 @@ fun NoteCard(
 private fun NoteBlockPreviewItem(
     block: NoteBlock,
     cardContentColor: Color,
+    numberedIndex: Int = 1,
     onTaskToggle: (Boolean) -> Unit
 ) {
     when (block.type) {
@@ -397,7 +413,7 @@ private fun NoteBlockPreviewItem(
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Text(
-                    text = "${block.order + 1}.",
+                    text = "$numberedIndex.",
                     style = MaterialTheme.typography.bodySmall.copy(
                         fontWeight = FontWeight.Bold,
                         color = cardContentColor.copy(alpha = 0.85f)
