@@ -63,6 +63,7 @@ import com.zainotes.app.ui.components.NoteBackgroundRenderer
 import com.zainotes.app.ui.components.NoteThemePickerSheet
 import com.zainotes.app.ui.theme.ExpressiveMotion
 import com.zainotes.app.ui.theme.NoteColor
+import com.zainotes.app.ui.theme.staggeredEntrance
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -238,32 +239,43 @@ fun EditorScreen(
                         items = state.blocks,
                         key = { _, block -> block.id }
                     ) { index, block ->
-                        BlockItem(
-                            block = block,
-                            index = index,
-                            totalBlocks = state.blocks.size,
-                            isFocused = state.activeBlock?.id == block.id,
-                            strikethroughCompleted = state.strikethroughCompleted,
-                            onFocused = { viewModel.setActiveBlock(block.id) },
-                            onContentChange = { newText -> viewModel.updateBlockContent(block.id, newText) },
-                            onTableChange = { newTable -> viewModel.updateTableData(block.id, newTable) },
-                            onTaskToggle = { viewModel.toggleTaskChecked(block.id) },
-                            onConvertType = { newType -> viewModel.convertBlockType(block.id, newType) },
-                            onDelete = { viewModel.deleteBlock(block.id) },
-                            onMoveUp = { viewModel.moveBlockUp(index) },
-                            onMoveDown = { viewModel.moveBlockDown(index) },
-                            onEnterPressed = {
-                                val nextType = when (block.type) {
-                                    BlockType.NUMBERED -> BlockType.NUMBERED
-                                    BlockType.BULLET -> BlockType.BULLET
-                                    BlockType.TASK -> BlockType.TASK
-                                    else -> BlockType.TEXT
-                                }
-                                viewModel.addBlock(nextType, index + 1)
-                            },
-                            contentColor = animatedContentColor,
-                            numberedIndex = state.blocks.getNumberedIndex(index)
-                        )
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .animateItem(
+                                    fadeInSpec = ExpressiveMotion.spatialFastSpec(),
+                                    placementSpec = ExpressiveMotion.spatialDefaultSpec(),
+                                    fadeOutSpec = ExpressiveMotion.spatialFastSpec()
+                                )
+                                .staggeredEntrance(index = index)
+                        ) {
+                            BlockItem(
+                                block = block,
+                                index = index,
+                                totalBlocks = state.blocks.size,
+                                isFocused = state.activeBlock?.id == block.id,
+                                strikethroughCompleted = state.strikethroughCompleted,
+                                onFocused = { viewModel.setActiveBlock(block.id) },
+                                onContentChange = { newText -> viewModel.updateBlockContent(block.id, newText) },
+                                onTableChange = { newTable -> viewModel.updateTableData(block.id, newTable) },
+                                onTaskToggle = { viewModel.toggleTaskChecked(block.id) },
+                                onConvertType = { newType -> viewModel.convertBlockType(block.id, newType) },
+                                onDelete = { viewModel.deleteBlock(block.id) },
+                                onMoveUp = { viewModel.moveBlockUp(index) },
+                                onMoveDown = { viewModel.moveBlockDown(index) },
+                                onEnterPressed = {
+                                    val nextType = when (block.type) {
+                                        BlockType.NUMBERED -> BlockType.NUMBERED
+                                        BlockType.BULLET -> BlockType.BULLET
+                                        BlockType.TASK -> BlockType.TASK
+                                        else -> BlockType.TEXT
+                                    }
+                                    viewModel.addBlock(nextType, index + 1)
+                                },
+                                contentColor = animatedContentColor,
+                                numberedIndex = state.blocks.getNumberedIndex(index)
+                            )
+                        }
                     }
 
                     item {

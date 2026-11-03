@@ -19,10 +19,19 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
+import androidx.compose.ui.input.nestedscroll.NestedScrollSource
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavHostController
 import androidx.navigation.NavType
@@ -72,7 +81,45 @@ fun ZainotesNavGraph(
         else -> DockDestination.HOME
     }
 
-    Box(modifier = modifier.fillMaxSize()) {
+    var isBottomDockCollapsed by remember { mutableStateOf(false) }
+    var accumulatedScrollDelta by remember { mutableFloatStateOf(0f) }
+    var focusApiKeyInSettings by remember { mutableStateOf(false) }
+
+    // Reset collapsed dock state whenever route changes
+    LaunchedEffect(route) {
+        isBottomDockCollapsed = false
+        accumulatedScrollDelta = 0f
+    }
+
+    val nestedScrollConnection = remember {
+        object : NestedScrollConnection {
+            override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
+                val dy = available.y
+                if (dy < -1f) {
+                    // User scrolling down (finger moving up)
+                    accumulatedScrollDelta = (accumulatedScrollDelta + dy).coerceAtMost(0f)
+                    if (accumulatedScrollDelta < -42f) {
+                        isBottomDockCollapsed = true
+                        accumulatedScrollDelta = 0f
+                    }
+                } else if (dy > 1f) {
+                    // User scrolling up (finger moving down)
+                    accumulatedScrollDelta = (accumulatedScrollDelta + dy).coerceAtLeast(0f)
+                    if (accumulatedScrollDelta > 24f) {
+                        isBottomDockCollapsed = false
+                        accumulatedScrollDelta = 0f
+                    }
+                }
+                return Offset.Zero
+            }
+        }
+    }
+
+    Box(
+        modifier = modifier
+            .fillMaxSize()
+            .nestedScroll(nestedScrollConnection)
+    ) {
         NavHost(
             navController = navController,
             startDestination = Screen.Home.route,
@@ -85,11 +132,14 @@ fun ZainotesNavGraph(
                     if (fromOrder > 0) {
                         slideIntoContainer(
                             towards = AnimatedContentTransitionScope.SlideDirection.End,
-                            animationSpec = ExpressiveMotion.spatialFastSpec()
+                            animationSpec = ExpressiveMotion.spatialHeroSpec()
+                        ) + scaleIn(
+                            initialScale = 0.92f,
+                            animationSpec = ExpressiveMotion.spatialHeroSpec()
                         ) + fadeIn(tween(ExpressiveMotion.DurationShort))
                     } else {
                         fadeIn(tween(ExpressiveMotion.DurationShort)) +
-                            scaleIn(initialScale = 0.96f, animationSpec = ExpressiveMotion.spatialFastSpec())
+                            scaleIn(initialScale = 0.92f, animationSpec = ExpressiveMotion.spatialHeroSpec())
                     }
                 },
                 exitTransition = {
@@ -97,11 +147,14 @@ fun ZainotesNavGraph(
                     if (toOrder > 0) {
                         slideOutOfContainer(
                             towards = AnimatedContentTransitionScope.SlideDirection.Start,
-                            animationSpec = ExpressiveMotion.spatialFastSpec()
+                            animationSpec = ExpressiveMotion.spatialHeroSpec()
+                        ) + scaleOut(
+                            targetScale = 0.92f,
+                            animationSpec = ExpressiveMotion.spatialHeroSpec()
                         ) + fadeOut(tween(ExpressiveMotion.DurationShort))
                     } else {
                         fadeOut(tween(ExpressiveMotion.DurationShort)) +
-                            scaleOut(targetScale = 0.96f, animationSpec = ExpressiveMotion.spatialFastSpec())
+                            scaleOut(targetScale = 0.92f, animationSpec = ExpressiveMotion.spatialHeroSpec())
                     }
                 }
             ) {
@@ -129,7 +182,10 @@ fun ZainotesNavGraph(
                     }
                     slideIntoContainer(
                         towards = direction,
-                        animationSpec = ExpressiveMotion.spatialFastSpec()
+                        animationSpec = ExpressiveMotion.spatialHeroSpec()
+                    ) + scaleIn(
+                        initialScale = 0.92f,
+                        animationSpec = ExpressiveMotion.spatialHeroSpec()
                     ) + fadeIn(tween(ExpressiveMotion.DurationShort))
                 },
                 exitTransition = {
@@ -141,7 +197,10 @@ fun ZainotesNavGraph(
                     }
                     slideOutOfContainer(
                         towards = direction,
-                        animationSpec = ExpressiveMotion.spatialFastSpec()
+                        animationSpec = ExpressiveMotion.spatialHeroSpec()
+                    ) + scaleOut(
+                        targetScale = 0.92f,
+                        animationSpec = ExpressiveMotion.spatialHeroSpec()
                     ) + fadeOut(tween(ExpressiveMotion.DurationShort))
                 }
             ) {
@@ -152,6 +211,7 @@ fun ZainotesNavGraph(
                         navController.navigate(Screen.Editor.createRoute(noteId))
                     },
                     onNavigateToSettings = {
+                        focusApiKeyInSettings = true
                         navController.navigateTopLevel(Screen.Settings.route)
                     }
                 )
@@ -162,13 +222,19 @@ fun ZainotesNavGraph(
                 enterTransition = {
                     slideIntoContainer(
                         towards = AnimatedContentTransitionScope.SlideDirection.Start,
-                        animationSpec = ExpressiveMotion.spatialFastSpec()
+                        animationSpec = ExpressiveMotion.spatialHeroSpec()
+                    ) + scaleIn(
+                        initialScale = 0.92f,
+                        animationSpec = ExpressiveMotion.spatialHeroSpec()
                     ) + fadeIn(tween(ExpressiveMotion.DurationShort))
                 },
                 exitTransition = {
                     slideOutOfContainer(
                         towards = AnimatedContentTransitionScope.SlideDirection.End,
-                        animationSpec = ExpressiveMotion.spatialFastSpec()
+                        animationSpec = ExpressiveMotion.spatialHeroSpec()
+                    ) + scaleOut(
+                        targetScale = 0.92f,
+                        animationSpec = ExpressiveMotion.spatialHeroSpec()
                     ) + fadeOut(tween(ExpressiveMotion.DurationShort))
                 }
             ) {
@@ -178,7 +244,9 @@ fun ZainotesNavGraph(
                 )
                 SettingsScreen(
                     viewModel = settingsViewModel,
-                    onNavigateBack = { navController.navigateTopLevel(Screen.Home.route) }
+                    onNavigateBack = { navController.navigateTopLevel(Screen.Home.route) },
+                    focusApiKeyOnOpen = focusApiKeyInSettings,
+                    onApiKeyFocusConsumed = { focusApiKeyInSettings = false }
                 )
             }
 
@@ -186,13 +254,19 @@ fun ZainotesNavGraph(
                 route = Screen.Editor.route,
                 arguments = listOf(navArgument("noteId") { type = NavType.LongType; defaultValue = 0L }),
                 enterTransition = {
-                    slideIntoContainer(
+                    scaleIn(
+                        initialScale = 0.86f,
+                        animationSpec = ExpressiveMotion.spatialHeroSpec()
+                    ) + slideIntoContainer(
                         towards = AnimatedContentTransitionScope.SlideDirection.Up,
-                        animationSpec = ExpressiveMotion.spatialDefaultSpec()
+                        animationSpec = ExpressiveMotion.spatialHeroSpec()
                     ) + fadeIn(tween(ExpressiveMotion.DurationShort))
                 },
                 exitTransition = {
-                    slideOutOfContainer(
+                    scaleOut(
+                        targetScale = 0.88f,
+                        animationSpec = ExpressiveMotion.spatialFastSpec()
+                    ) + slideOutOfContainer(
                         towards = AnimatedContentTransitionScope.SlideDirection.Down,
                         animationSpec = ExpressiveMotion.spatialFastSpec()
                     ) + fadeOut(tween(ExpressiveMotion.DurationShort))
@@ -210,15 +284,21 @@ fun ZainotesNavGraph(
             }
         }
 
-        // Floating Bottom Navigation Dock (Pill + Standalone Circular FAB)
+        // Floating Bottom Navigation Dock (Pill + Standalone Circular/Morphing + FAB)
         AnimatedVisibility(
             visible = !isEditor,
             enter = slideInVertically(
                 initialOffsetY = { it },
-                animationSpec = ExpressiveMotion.spatialDefaultSpec()
+                animationSpec = ExpressiveMotion.spatialHeroSpec()
+            ) + scaleIn(
+                initialScale = 0.85f,
+                animationSpec = ExpressiveMotion.spatialHeroSpec()
             ) + fadeIn(tween(ExpressiveMotion.DurationShort)),
             exit = slideOutVertically(
                 targetOffsetY = { it },
+                animationSpec = ExpressiveMotion.spatialFastSpec()
+            ) + scaleOut(
+                targetScale = 0.85f,
                 animationSpec = ExpressiveMotion.spatialFastSpec()
             ) + fadeOut(tween(ExpressiveMotion.DurationShort)),
             modifier = Modifier
@@ -227,6 +307,7 @@ fun ZainotesNavGraph(
         ) {
             FloatingNavDock(
                 currentDestination = currentDockDestination,
+                isCollapsed = isBottomDockCollapsed,
                 onDestinationSelected = { destination ->
                     val targetRoute = when (destination) {
                         DockDestination.HOME -> Screen.Home.route

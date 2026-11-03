@@ -12,11 +12,14 @@ package com.zainotes.app.ui.components
 import android.text.format.DateUtils
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -30,7 +33,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.AspectRatio
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.DeleteOutline
 import androidx.compose.material.icons.filled.MoreVert
@@ -49,7 +51,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
@@ -61,6 +62,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.text.font.FontFamily
@@ -76,10 +78,10 @@ import com.zainotes.app.data.model.NoteBackgroundTheme
 import com.zainotes.app.data.model.NoteBlock
 import com.zainotes.app.data.model.getNumberedIndex
 import com.zainotes.app.data.preferences.AppSettingsSnapshot
-import com.zainotes.app.ui.theme.CardShapeExpressive
 import com.zainotes.app.ui.theme.ExpressiveMotion
 import com.zainotes.app.ui.theme.GoogleSansFlexFontFamily
 import com.zainotes.app.ui.theme.NoteColor
+import com.zainotes.app.ui.theme.expressivePressable
 
 @OptIn(ExperimentalFoundationApi::class, ExperimentalMaterial3Api::class)
 @Composable
@@ -116,9 +118,18 @@ fun NoteCard(
     val maxPreviewItems = Int.MAX_VALUE
 
     val themeEnum = NoteBackgroundTheme.fromId(note.backgroundTheme)
+    val cardInteractionSource = remember { MutableInteractionSource() }
+    val isCardPressed by cardInteractionSource.collectIsPressedAsState()
+
+    val animatedCornerRadius by animateDpAsState(
+        targetValue = if (isCardPressed) 18.dp else 28.dp,
+        animationSpec = ExpressiveMotion.spatialFastSpec(),
+        label = "cardCornerMorph"
+    )
+    val morphingCardShape = RoundedCornerShape(animatedCornerRadius)
 
     Card(
-        shape = CardShapeExpressive,
+        shape = morphingCardShape,
         colors = CardDefaults.cardColors(
             containerColor = cardBg,
             contentColor = cardContent
@@ -126,20 +137,23 @@ fun NoteCard(
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
         modifier = modifier
             .fillMaxWidth()
+            .expressivePressable(cardInteractionSource, pressedScale = 0.96f)
             .animateContentSize(animationSpec = ExpressiveMotion.spatialDefaultSpec())
-            .clip(CardShapeExpressive)
+            .clip(morphingCardShape)
             .then(
                 if (isDark && settings.amoledPureBlackCards) {
                     Modifier.border(
                         width = 1.dp,
                         color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f),
-                        shape = CardShapeExpressive
+                        shape = morphingCardShape
                     )
                 } else {
                     Modifier
                 }
             )
             .combinedClickable(
+                interactionSource = cardInteractionSource,
+                indication = androidx.compose.foundation.LocalIndication.current,
                 onClick = onClick,
                 onLongClick = { showMenu = true }
             )
@@ -423,6 +437,11 @@ private fun NoteBlockPreviewItem(
                 animationSpec = ExpressiveMotion.snappySpec(),
                 label = "taskTextColor"
             )
+            val checkboxScale by animateFloatAsState(
+                targetValue = if (block.isChecked) 1.08f else 1.0f,
+                animationSpec = ExpressiveMotion.spatialMicroSpec(),
+                label = "taskCheckboxScale"
+            )
             Row(
                 verticalAlignment = Alignment.Top,
                 modifier = rowModifier
@@ -435,7 +454,9 @@ private fun NoteBlockPreviewItem(
                         uncheckedColor = cardContentColor.copy(alpha = 0.6f),
                         checkmarkColor = MaterialTheme.colorScheme.onPrimary
                     ),
-                    modifier = Modifier.size(30.dp)
+                    modifier = Modifier
+                        .size(30.dp)
+                        .scale(checkboxScale)
                 )
                 Spacer(modifier = Modifier.width(6.dp))
                 Text(
