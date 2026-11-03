@@ -15,9 +15,12 @@
 
 - 🎨 **Material 3 Expressive System**: Vibrant color palettes, dynamic Monet theming, organic rounded corners, Google Sans Flex typography, spring physics, and fluid interactive components.
 - 🖤 **Pure AMOLED Black**: True `#000000` pitch black mode across the canvas, cards, floating bottom navigation, editor actions, and dialog sheets for maximum OLED battery savings and contrast.
-- 🤖 **Native AI Assistant & Tools**: Dedicated AI workspace with multi-provider connectivity, customizable endpoints, persistent chat sessions, memory management, and contextual note generation.
+- 🤖 **Native AI Assistant & Tools**: Dedicated AI workspace with multi-provider connectivity, customizable endpoints, persistent chat sessions with AI-generated smart session titles, memory management, and contextual note generation.
+- 📸 **Media Attachments**: Seamlessly embed images, audio recordings, and videos directly into notes with dedicated playback controls and full-screen viewers.
+- 🎨 **Custom Theme Accent Colors**: Handcrafted high-contrast accent palettes (Purple, Ocean Blue, Emerald, Rose Pink, Sunset Gold, Coral Red, Aqua Teal, and Indigo) when dynamic wallpaper theming is off.
 - 🖼️ **15 Vector Background Themes**: Beautifully bounded native vector illustrations including Groceries, Food & Cooking, Music, Recipes, Notes, Places, Cinema, Celebration, Storm, Dusk, Flora, Doodles, Ruled Lines, Graph Grid, and Dot Matrix.
 - 📝 **Hybrid Block Architecture**:
+  - **Media & Visual Blocks**: Interactive photo frames, voice memos/audio players with scrubbing sliders, and native video previews.
   - **Rich Text Formatting**: Seamless inline bold, italic, underline, and strikethrough styling.
   - **Smart 1 2 3 Numbered Lists**: Automatically clusters consecutive items starting from `1.` and resets cleanly when interrupted.
   - **Interactive Checklists**: Check off tasks right from the note card on your home screen or within the editor.
@@ -62,7 +65,7 @@
 
 Get the latest signed APK directly from GitHub Releases:
 
-👉 **[Download Zainotes v2.0.0](https://github.com/hydroxideOH-OMG/Zainotes/releases/latest)**
+👉 **[Download Zainotes v2.1.0](https://github.com/hydroxideOH-OMG/Zainotes/releases/latest)**
 
 - **Package Name**: `com.zainotes.app`
 - **Requires**: Android 8.0 (API 26) or newer
