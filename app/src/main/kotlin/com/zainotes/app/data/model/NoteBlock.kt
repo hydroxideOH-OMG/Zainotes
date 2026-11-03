@@ -19,7 +19,10 @@ enum class BlockType {
     HEADING,
     QUOTE,
     CODE,
-    TABLE
+    TABLE,
+    IMAGE,
+    AUDIO,
+    VIDEO
 }
 
 data class NoteBlock(
@@ -36,8 +39,16 @@ data class NoteBlock(
     val isMonospace: Boolean = false,
     val textScale: Int = 0, // -1 = Small, 0 = Normal, 1 = Large
     val textAlign: Int = 0, // 0 = Start, 1 = Center, 2 = End
-    val tableData: List<List<String>> = emptyList()
+    val tableData: List<List<String>> = emptyList(),
+    val mediaUri: String? = null,
+    val mediaName: String? = null,
+    val mediaMimeType: String? = null,
+    val mediaDurationMs: Long = 0L,
+    val mediaSizeBytes: Long = 0L
 ) {
+    val isMediaBlock: Boolean
+        get() = type == BlockType.IMAGE || type == BlockType.AUDIO || type == BlockType.VIDEO
+
     val hasCustomFormatting: Boolean
         get() = isBold || isItalic || isUnderline || isStrikethrough ||
             isHighlighted || isMonospace || textScale != 0 || textAlign != 0

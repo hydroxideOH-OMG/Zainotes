@@ -36,5 +36,12 @@ data class Note(
 
     /** Plain preview text for search and concise views */
     val previewText: String
-        get() = blocks.joinToString(" ") { it.content }.trim()
+        get() = blocks.joinToString(" ") { block ->
+            when (block.type) {
+                BlockType.IMAGE -> listOfNotNull(block.mediaName, block.content.takeIf { it.isNotBlank() }).joinToString(" ")
+                BlockType.AUDIO -> listOfNotNull(block.mediaName, block.content.takeIf { it.isNotBlank() }).joinToString(" ")
+                BlockType.VIDEO -> listOfNotNull(block.mediaName, block.content.takeIf { it.isNotBlank() }).joinToString(" ")
+                else -> block.content
+            }
+        }.trim()
 }

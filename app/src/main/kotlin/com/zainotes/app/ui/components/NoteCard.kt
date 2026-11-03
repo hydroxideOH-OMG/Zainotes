@@ -597,6 +597,13 @@ private fun NoteBlockPreviewItem(
                 }
             }
         }
+        BlockType.IMAGE, BlockType.AUDIO, BlockType.VIDEO -> {
+            NoteMediaPreviewItem(
+                block = block,
+                cardContentColor = cardContentColor,
+                modifier = rowModifier
+            )
+        }
         BlockType.TEXT -> {
             if (block.content.isNotBlank()) {
                 Text(

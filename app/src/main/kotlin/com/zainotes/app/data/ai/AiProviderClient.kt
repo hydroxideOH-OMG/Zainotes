@@ -182,9 +182,16 @@ data class AiChatMessage(
 data class AiChatSession(
     val id: String = UUID.randomUUID().toString(),
     val title: String = "New Chat",
+    val isCustomTitle: Boolean = false,
     val createdAt: Long = System.currentTimeMillis(),
     val updatedAt: Long = System.currentTimeMillis(),
     val messages: List<AiChatMessage> = emptyList()
+)
+
+data class AiStreamUpdate(
+    val partialReplyText: String,
+    val statusPhase: String,
+    val suggestedSessionTitle: String? = null
 )
 
 data class AiAgentTurnResponse(
@@ -192,7 +199,8 @@ data class AiAgentTurnResponse(
     val updatedMemories: List<AiMemoryItem>,
     val toolEvents: List<AiToolEvent>,
     val proposedNotes: List<AiProposedNoteAction>,
-    val providerBadge: String
+    val providerBadge: String,
+    val suggestedSessionTitle: String? = null
 )
 
 object AiProviderClient {
@@ -225,6 +233,60 @@ object AiProviderClient {
             lower.contains("10.0.2.2") ||
             lower.contains("192.168.") ||
             lower.contains("0.0.0.0")
+    }
+
+    /**
+     * Generates a clean, descriptive topic title for a chat session instead of using the raw user message.
+     */
+    fun generateSmartSessionTitle(
+        userPrompt: String,
+        proposedNoteTitle: String? = null,
+        aiSuggestedTitle: String? = null
+    ): String {
+        val cleanSuggested = aiSuggestedTitle?.trim()?.removeSurrounding("\"")?.trim().orEmpty()
+        if (cleanSuggested.length in 3..48 && !cleanSuggested.equals("New Chat", ignoreCase = true)) {
+            return cleanSuggested
+        }
+        val cleanNoteTitle = proposedNoteTitle?.trim().orEmpty()
+        if (cleanNoteTitle.isNotBlank() && !cleanNoteTitle.equals("Untitled Note", ignoreCase = true)) {
+            return cleanNoteTitle.take(45)
+        }
+
+        val normalized = userPrompt.trim().replace(Regex("\\s+"), " ")
+        if (normalized.isBlank()) return "New Chat"
+
+        val lower = normalized.lowercase()
+        when {
+            lower.startsWith("summarize my notes") -> return "Workspace Notes Summary"
+            lower.startsWith("find and list all open tasks") || lower.startsWith("list open tasks") -> return "Open Tasks Overview"
+            lower.startsWith("draft a clean daily checklist") || lower.startsWith("draft a checklist") -> return "Daily Checklist Draft"
+            lower.startsWith("remember that ") -> {
+                val fact = normalized.substring("remember that ".length).trim().trimEnd('.', '!', '?')
+                val shortFact = fact.split(" ").take(5).joinToString(" ")
+                return "Memory: ${shortFact.replaceFirstChar { it.uppercase() }}"
+            }
+        }
+
+        // Strip conversational filler prefixes to extract the topic
+        val stripped = normalized
+            .replace(
+                Regex(
+                    "^(please\\s+|can you\\s+|could you\\s+|would you\\s+|help me\\s+|i want to\\s+|i need to\\s+|draft a clean\\s+|draft a\\s+|create a\\s+|write a\\s+|make a\\s+|give me a\\s+|tell me about\\s+)+",
+                    RegexOption.IGNORE_CASE
+                ),
+                ""
+            )
+            .trim()
+            .trimEnd('.', '!', '?', ',', ';', ':')
+
+        val candidate = stripped.ifBlank { normalized }
+        val words = candidate.split(" ").filter { it.isNotBlank() }
+        val concise = if (words.size > 6) {
+            words.take(6).joinToString(" ")
+        } else {
+            words.joinToString(" ")
+        }
+        return concise.replaceFirstChar { it.uppercase() }.take(48)
     }
 
     /**
@@ -337,8 +399,8 @@ object AiProviderClient {
     }
 
     /**
-     * Runs a live AI chat turn with Persistent Memory and Note Drafting/Editing tools.
-     * Offline fallback is removed: requires a valid API key configured in Settings (or local endpoint).
+     * Runs a live AI chat turn with Server-Sent Events (SSE) token streaming,
+     * Persistent Memory, and Note Drafting/Editing tools.
      */
     suspend fun runAgentChatTurn(
         provider: AiProvider,
@@ -350,7 +412,8 @@ object AiProviderClient {
         memories: List<AiMemoryItem>,
         activeNotes: List<Note>,
         attachedNotes: List<Note> = emptyList(),
-        attachedImages: List<AiAttachedImage> = emptyList()
+        attachedImages: List<AiAttachedImage> = emptyList(),
+        onStreamUpdate: (AiStreamUpdate) -> Unit = {}
     ): AiAgentTurnResponse = withContext(Dispatchers.IO) {
         val cleanKey = apiKey.trim()
         val chosenModel = modelName.ifBlank { provider.defaultModel }
@@ -387,15 +450,38 @@ object AiProviderClient {
 
         val llmResult = try {
             when (provider) {
-                AiProvider.GEMINI -> callGeminiJsonAgent(cleanKey, chosenModel, systemInstruction, chatHistory, enrichedPrompt, attachedImages)
-                AiProvider.ANTHROPIC -> callAnthropicJsonAgent(cleanKey, chosenModel, systemInstruction, chatHistory, enrichedPrompt)
+                AiProvider.GEMINI -> callGeminiStreamingAgent(
+                    apiKey = cleanKey,
+                    model = chosenModel,
+                    systemInstruction = systemInstruction,
+                    history = chatHistory,
+                    userPrompt = enrichedPrompt,
+                    attachedImages = attachedImages,
+                    onStreamUpdate = onStreamUpdate
+                )
+                AiProvider.ANTHROPIC -> callAnthropicStreamingAgent(
+                    apiKey = cleanKey,
+                    model = chosenModel,
+                    systemInstruction = systemInstruction,
+                    history = chatHistory,
+                    userPrompt = enrichedPrompt,
+                    onStreamUpdate = onStreamUpdate
+                )
                 else -> {
                     val base = if (provider == AiProvider.CUSTOM) {
                         resolvedCustomBase
                     } else {
                         provider.defaultBaseUrl.trimEnd('/')
                     }
-                    callOpenAiCompatibleJsonAgent(base, cleanKey, chosenModel, systemInstruction, chatHistory, enrichedPrompt)
+                    callOpenAiCompatibleStreamingAgent(
+                        baseUrl = base,
+                        apiKey = cleanKey,
+                        model = chosenModel,
+                        systemInstruction = systemInstruction,
+                        history = chatHistory,
+                        userPrompt = enrichedPrompt,
+                        onStreamUpdate = onStreamUpdate
+                    )
                 }
             }
         } catch (e: Exception) {
@@ -452,7 +538,8 @@ object AiProviderClient {
 You are Zainotes Smart AI Assistant with Persistent Memory and Note Canvas Tools.
 Respond ONLY with a valid JSON object (no markdown fences) matching this schema:
 {
-  "reply": "Your helpful, natural conversational response.",
+  "reply": "Your helpful, well-formatted conversational response (supports Markdown bold, bullets, headings, code).",
+  "session_title": "Short 2 to 5 word topic title for this chat session",
   "memory_actions": [
     {
       "action": "save" | "update" | "delete",
@@ -465,7 +552,7 @@ Respond ONLY with a valid JSON object (no markdown fences) matching this schema:
       "action": "draft_note" | "edit_note",
       "targetNoteId": 1,
       "title": "Note Title",
-      "summary": "Brief summary of changes",
+      "summary": "Concise 1-sentence description of the note draft or edits",
       "colorId": "default" | "coral" | "peach" | "sand" | "mint" | "sage" | "fog" | "storm" | "dusk" | "blossom" | "clay" | "chalk" | "lavender" | "sky" | "amber" | "rose",
       "backgroundTheme": "none" | "groceries" | "food" | "music" | "recipes" | "notes" | "places" | "travel" | "video" | "celebration" | "dusk" | "storm" | "nature" | "doodles" | "ruled" | "grid" | "dots",
       "isPinned": false,
@@ -495,15 +582,121 @@ $notesText
 """.trimIndent()
     }
 
-    private fun callGeminiJsonAgent(
+    /**
+     * Extracts the live human-readable `"reply"` value while the JSON response is still streaming via SSE.
+     */
+    internal fun extractLiveStreamState(
+        rawAccumulated: String,
+        hasReasoningStream: Boolean = false
+    ): AiStreamUpdate {
+        val openThink = rawAccumulated.indexOf("<think>", ignoreCase = true)
+        val closeThink = rawAccumulated.indexOf("</think>", ignoreCase = true)
+        if (openThink >= 0 && closeThink < 0) {
+            return AiStreamUpdate(
+                partialReplyText = "",
+                statusPhase = "Reasoning through request..."
+            )
+        }
+
+        val withoutThink = rawAccumulated
+            .replace(Regex("<think>[\\s\\S]*?</think>", RegexOption.IGNORE_CASE), "")
+            .trim()
+
+        if (withoutThink.isBlank()) {
+            return AiStreamUpdate(
+                partialReplyText = "",
+                statusPhase = if (hasReasoningStream) "Reasoning through request..." else "Receiving stream..."
+            )
+        }
+
+        val stripped = withoutThink
+            .removePrefix("```json")
+            .removePrefix("```")
+            .trimStart()
+
+        // If the model isn't outputting JSON at all (e.g., a raw markdown response from a custom model)
+        if (!stripped.startsWith("{") && !stripped.contains("\"reply\"")) {
+            return AiStreamUpdate(
+                partialReplyText = stripped.removeSuffix("```").trim(),
+                statusPhase = "Streaming response..."
+            )
+        }
+
+        val replyKeyMatch = Regex("\"reply\"\\s*:\\s*\"").find(stripped)
+            ?: return AiStreamUpdate(
+                partialReplyText = "",
+                statusPhase = "Preparing response..."
+            )
+
+        val valueStart = replyKeyMatch.range.last + 1
+        val sb = StringBuilder()
+        var i = valueStart
+        var replyFinished = false
+
+        while (i < stripped.length) {
+            val c = stripped[i]
+            if (c == '\\') {
+                if (i + 1 >= stripped.length) break // wait for next chunk to complete escape
+                val next = stripped[i + 1]
+                when (next) {
+                    'n' -> { sb.append('\n'); i += 2 }
+                    'r' -> { i += 2 }
+                    't' -> { sb.append('\t'); i += 2 }
+                    '"' -> { sb.append('"'); i += 2 }
+                    '\\' -> { sb.append('\\'); i += 2 }
+                    '/' -> { sb.append('/'); i += 2 }
+                    'u' -> {
+                        if (i + 5 < stripped.length) {
+                            val hex = stripped.substring(i + 2, i + 6)
+                            val codePoint = hex.toIntOrNull(16)
+                            if (codePoint != null) sb.append(codePoint.toChar())
+                            i += 6
+                        } else {
+                            break
+                        }
+                    }
+                    else -> {
+                        sb.append(next)
+                        i += 2
+                    }
+                }
+            } else if (c == '"') {
+                replyFinished = true
+                break
+            } else {
+                sb.append(c)
+                i++
+            }
+        }
+
+        val tailAfterReply = if (replyFinished && i < stripped.length) stripped.substring(i) else ""
+        val phase = when {
+            !replyFinished -> "Streaming response..."
+            tailAfterReply.contains("\"note_actions\"") -> "Drafting note blocks..."
+            tailAfterReply.contains("\"memory_actions\"") -> "Updating memory..."
+            else -> "Finalizing response..."
+        }
+
+        val titleMatch = Regex("\"session_title\"\\s*:\\s*\"([^\"]+)\"").find(stripped)
+        val extractedTitle = titleMatch?.groupValues?.getOrNull(1)?.trim()
+
+        return AiStreamUpdate(
+            partialReplyText = sb.toString(),
+            statusPhase = phase,
+            suggestedSessionTitle = extractedTitle
+        )
+    }
+
+    private fun callGeminiStreamingAgent(
         apiKey: String,
         model: String,
         systemInstruction: String,
         history: List<AiChatMessage>,
         userPrompt: String,
-        attachedImages: List<AiAttachedImage> = emptyList()
+        attachedImages: List<AiAttachedImage> = emptyList(),
+        onStreamUpdate: (AiStreamUpdate) -> Unit = {}
     ): Result<String> {
-        val endpoint = "https://generativelanguage.googleapis.com/v1beta/models/$model:generateContent?key=$apiKey"
+        val streamEndpoint = "https://generativelanguage.googleapis.com/v1beta/models/$model:streamGenerateContent?alt=sse&key=$apiKey"
         val payload = JsonObject().apply {
             add("systemInstruction", JsonObject().apply {
                 add("parts", JsonArray().apply {
@@ -541,38 +734,92 @@ $notesText
             })
         }
 
-        val conn = (URL(endpoint).openConnection() as HttpURLConnection).apply {
+        val conn = (URL(streamEndpoint).openConnection() as HttpURLConnection).apply {
             requestMethod = "POST"
             doOutput = true
             setRequestProperty("Content-Type", "application/json")
+            setRequestProperty("Accept", "text/event-stream")
             connectTimeout = 45000
-            readTimeout = 180000
+            readTimeout = 300000
         }
         OutputStreamWriter(conn.outputStream, Charsets.UTF_8).use { it.write(gson.toJson(payload)) }
         val code = conn.responseCode
-        val body = readStream(conn, code in 200..299)
         if (code !in 200..299) {
-            return Result.failure(Exception("Gemini HTTP $code: ${extractErrorMsg(body)}"))
+            val errBody = readStream(conn, false)
+            return Result.failure(Exception("Gemini HTTP $code: ${extractErrorMsg(errBody)}"))
         }
-        val root = JsonParser.parseString(body).asJsonObject
-        val parts = root.getAsJsonArray("candidates")
-            ?.firstOrNull()?.asJsonObject
-            ?.getAsJsonObject("content")
-            ?.getAsJsonArray("parts")
-        val text = parts
-            ?.mapNotNull { it.asJsonObject.get("text")?.asString }
-            ?.lastOrNull { it.isNotBlank() }
-            ?: return Result.failure(Exception("Empty response from Gemini"))
-        return Result.success(text)
+
+        val accumulated = StringBuilder()
+        val rawFallback = StringBuilder()
+
+        BufferedReader(InputStreamReader(conn.inputStream, Charsets.UTF_8)).use { reader ->
+            var line: String?
+            while (reader.readLine().also { line = it } != null) {
+                val currentLine = line ?: continue
+                rawFallback.append(currentLine).append('\n')
+                val trimmed = currentLine.trim()
+                if (trimmed.startsWith("data:")) {
+                    val dataStr = trimmed.removePrefix("data:").trim()
+                    if (dataStr.isEmpty() || dataStr == "[DONE]") continue
+                    runCatching {
+                        val chunkObj = JsonParser.parseString(dataStr).asJsonObject
+                        val parts = chunkObj.getAsJsonArray("candidates")
+                            ?.firstOrNull()?.asJsonObject
+                            ?.getAsJsonObject("content")
+                            ?.getAsJsonArray("parts")
+                        parts?.forEach { p ->
+                            val pObj = p.asJsonObject
+                            val isThought = pObj.get("thought")?.asBoolean == true
+                            val chunkText = pObj.get("text")?.asString.orEmpty()
+                            if (isThought) {
+                                onStreamUpdate(
+                                    AiStreamUpdate(
+                                        partialReplyText = "",
+                                        statusPhase = "Reasoning through request..."
+                                    )
+                                )
+                            } else if (chunkText.isNotEmpty()) {
+                                accumulated.append(chunkText)
+                                onStreamUpdate(extractLiveStreamState(accumulated.toString()))
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        val finalStr = accumulated.toString().trim()
+        if (finalStr.isNotEmpty()) {
+            return Result.success(finalStr)
+        }
+
+        // Fallback if server returned non-SSE JSON response
+        val fallbackBody = rawFallback.toString().trim()
+        if (fallbackBody.isNotEmpty()) {
+            runCatching {
+                val root = JsonParser.parseString(fallbackBody).asJsonObject
+                val parts = root.getAsJsonArray("candidates")
+                    ?.firstOrNull()?.asJsonObject
+                    ?.getAsJsonObject("content")
+                    ?.getAsJsonArray("parts")
+                val text = parts
+                    ?.mapNotNull { it.asJsonObject.get("text")?.asString }
+                    ?.lastOrNull { it.isNotBlank() }
+                if (!text.isNullOrBlank()) return Result.success(text)
+            }
+        }
+
+        return Result.failure(Exception("Empty response from Gemini"))
     }
 
-    private fun callOpenAiCompatibleJsonAgent(
+    private fun callOpenAiCompatibleStreamingAgent(
         baseUrl: String,
         apiKey: String,
         model: String,
         systemInstruction: String,
         history: List<AiChatMessage>,
-        userPrompt: String
+        userPrompt: String,
+        onStreamUpdate: (AiStreamUpdate) -> Unit = {}
     ): Result<String> {
         val endpoint = "$baseUrl/chat/completions"
         val messages = JsonArray().apply {
@@ -594,6 +841,7 @@ $notesText
         val payload = JsonObject().apply {
             addProperty("model", model)
             add("messages", messages)
+            addProperty("stream", true)
         }
 
         val conn = (URL(endpoint).openConnection() as HttpURLConnection).apply {
@@ -602,30 +850,90 @@ $notesText
             val effectiveKey = apiKey.ifBlank { "local-key" }
             setRequestProperty("Authorization", "Bearer $effectiveKey")
             setRequestProperty("Content-Type", "application/json")
+            setRequestProperty("Accept", "text/event-stream, application/json")
             connectTimeout = 45000
-            readTimeout = 180000
+            readTimeout = 300000
         }
         OutputStreamWriter(conn.outputStream, Charsets.UTF_8).use { it.write(gson.toJson(payload)) }
         val code = conn.responseCode
-        val body = readStream(conn, code in 200..299)
         if (code !in 200..299) {
-            return Result.failure(Exception("API HTTP $code: ${extractErrorMsg(body)}"))
+            val errBody = readStream(conn, false)
+            return Result.failure(Exception("API HTTP $code: ${extractErrorMsg(errBody)}"))
         }
-        val root = JsonParser.parseString(body).asJsonObject
-        val text = root.getAsJsonArray("choices")
-            ?.firstOrNull()?.asJsonObject
-            ?.getAsJsonObject("message")
-            ?.get("content")?.asString
-            ?: return Result.failure(Exception("Empty response from provider"))
-        return Result.success(text)
+
+        val accumulated = StringBuilder()
+        val rawFallback = StringBuilder()
+        var sawReasoningDelta = false
+
+        BufferedReader(InputStreamReader(conn.inputStream, Charsets.UTF_8)).use { reader ->
+            var line: String?
+            while (reader.readLine().also { line = it } != null) {
+                val currentLine = line ?: continue
+                rawFallback.append(currentLine).append('\n')
+                val trimmed = currentLine.trim()
+                if (trimmed.startsWith("data:")) {
+                    val dataStr = trimmed.removePrefix("data:").trim()
+                    if (dataStr.isEmpty() || dataStr == "[DONE]") continue
+                    runCatching {
+                        val chunkObj = JsonParser.parseString(dataStr).asJsonObject
+                        val choiceObj = chunkObj.getAsJsonArray("choices")
+                            ?.firstOrNull()?.asJsonObject
+                        val deltaObj = choiceObj?.getAsJsonObject("delta")
+                            ?: choiceObj?.getAsJsonObject("message")
+
+                        if (deltaObj != null) {
+                            val reasoningChunk = deltaObj.get("reasoning_content")?.takeIf { !it.isJsonNull }?.asString
+                                ?: deltaObj.get("reasoning")?.takeIf { !it.isJsonNull }?.asString
+                            if (!reasoningChunk.isNullOrEmpty()) {
+                                sawReasoningDelta = true
+                            }
+                            val contentChunk = deltaObj.get("content")?.takeIf { !it.isJsonNull }?.asString.orEmpty()
+                            if (contentChunk.isNotEmpty()) {
+                                accumulated.append(contentChunk)
+                            }
+                            onStreamUpdate(
+                                extractLiveStreamState(
+                                    rawAccumulated = accumulated.toString(),
+                                    hasReasoningStream = sawReasoningDelta && accumulated.isEmpty()
+                                )
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
+        val finalStr = accumulated.toString().trim()
+        if (finalStr.isNotEmpty()) {
+            return Result.success(finalStr)
+        }
+
+        // Fallback if endpoint returned a standard non-SSE JSON payload
+        val fallbackBody = rawFallback.toString().trim()
+        if (fallbackBody.isNotEmpty()) {
+            runCatching {
+                val root = JsonParser.parseString(fallbackBody).asJsonObject
+                val text = root.getAsJsonArray("choices")
+                    ?.firstOrNull()?.asJsonObject
+                    ?.getAsJsonObject("message")
+                    ?.get("content")?.asString
+                if (!text.isNullOrBlank()) {
+                    onStreamUpdate(extractLiveStreamState(text))
+                    return Result.success(text)
+                }
+            }
+        }
+
+        return Result.failure(Exception("Empty response from provider"))
     }
 
-    private fun callAnthropicJsonAgent(
+    private fun callAnthropicStreamingAgent(
         apiKey: String,
         model: String,
         systemInstruction: String,
         history: List<AiChatMessage>,
-        userPrompt: String
+        userPrompt: String,
+        onStreamUpdate: (AiStreamUpdate) -> Unit = {}
     ): Result<String> {
         val endpoint = "https://api.anthropic.com/v1/messages"
         val messages = JsonArray().apply {
@@ -645,6 +953,7 @@ $notesText
             addProperty("max_tokens", 2048)
             addProperty("system", systemInstruction)
             add("messages", messages)
+            addProperty("stream", true)
         }
 
         val conn = (URL(endpoint).openConnection() as HttpURLConnection).apply {
@@ -653,21 +962,72 @@ $notesText
             setRequestProperty("x-api-key", apiKey)
             setRequestProperty("anthropic-version", "2023-06-01")
             setRequestProperty("Content-Type", "application/json")
+            setRequestProperty("Accept", "text/event-stream")
             connectTimeout = 45000
-            readTimeout = 180000
+            readTimeout = 300000
         }
         OutputStreamWriter(conn.outputStream, Charsets.UTF_8).use { it.write(gson.toJson(payload)) }
         val code = conn.responseCode
-        val body = readStream(conn, code in 200..299)
         if (code !in 200..299) {
-            return Result.failure(Exception("Anthropic HTTP $code: ${extractErrorMsg(body)}"))
+            val errBody = readStream(conn, false)
+            return Result.failure(Exception("Anthropic HTTP $code: ${extractErrorMsg(errBody)}"))
         }
-        val root = JsonParser.parseString(body).asJsonObject
-        val text = root.getAsJsonArray("content")
-            ?.firstOrNull()?.asJsonObject
-            ?.get("text")?.asString
-            ?: return Result.failure(Exception("Empty response from Anthropic"))
-        return Result.success(text)
+
+        val accumulated = StringBuilder()
+        val rawFallback = StringBuilder()
+
+        BufferedReader(InputStreamReader(conn.inputStream, Charsets.UTF_8)).use { reader ->
+            var line: String?
+            while (reader.readLine().also { line = it } != null) {
+                val currentLine = line ?: continue
+                rawFallback.append(currentLine).append('\n')
+                val trimmed = currentLine.trim()
+                if (trimmed.startsWith("data:")) {
+                    val dataStr = trimmed.removePrefix("data:").trim()
+                    if (dataStr.isEmpty() || dataStr == "[DONE]") continue
+                    runCatching {
+                        val eventObj = JsonParser.parseString(dataStr).asJsonObject
+                        val type = eventObj.get("type")?.asString.orEmpty()
+                        if (type == "content_block_delta") {
+                            val delta = eventObj.getAsJsonObject("delta")
+                            val deltaType = delta?.get("type")?.asString.orEmpty()
+                            if (deltaType == "thinking_delta") {
+                                onStreamUpdate(
+                                    AiStreamUpdate(
+                                        partialReplyText = "",
+                                        statusPhase = "Reasoning through request..."
+                                    )
+                                )
+                            } else {
+                                val chunkText = delta?.get("text")?.asString.orEmpty()
+                                if (chunkText.isNotEmpty()) {
+                                    accumulated.append(chunkText)
+                                    onStreamUpdate(extractLiveStreamState(accumulated.toString()))
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        val finalStr = accumulated.toString().trim()
+        if (finalStr.isNotEmpty()) {
+            return Result.success(finalStr)
+        }
+
+        val fallbackBody = rawFallback.toString().trim()
+        if (fallbackBody.isNotEmpty()) {
+            runCatching {
+                val root = JsonParser.parseString(fallbackBody).asJsonObject
+                val text = root.getAsJsonArray("content")
+                    ?.firstOrNull()?.asJsonObject
+                    ?.get("text")?.asString
+                if (!text.isNullOrBlank()) return Result.success(text)
+            }
+        }
+
+        return Result.failure(Exception("Empty response from Anthropic"))
     }
 
     private fun parseAgentStructuredResponse(
@@ -697,7 +1057,8 @@ $notesText
 
         return try {
             val obj = JsonParser.parseString(cleaned).asJsonObject
-            val reply = obj.get("reply")?.asString ?: withoutThink
+            val reply = obj.get("reply")?.takeIf { !it.isJsonNull }?.asString ?: withoutThink
+            val suggestedTitle = obj.get("session_title")?.takeIf { !it.isJsonNull }?.asString?.trim()
 
             obj.getAsJsonArray("memory_actions")?.forEach { el ->
                 val mObj = el.asJsonObject
@@ -747,8 +1108,17 @@ $notesText
                     nObj.get("targetNoteId").asLong
                 } else null
                 val title = nObj.get("title")?.asString ?: "Untitled Note"
-                val summary = nObj.get("summary")?.asString
-                    ?: if (isEdit) "Proposed edits to \"$title\"" else "Drafted new note \"$title\""
+                val rawSummary = nObj.get("summary")?.takeIf { !it.isJsonNull }?.asString?.trim().orEmpty()
+                val summary = if (
+                    rawSummary.length <= 6 ||
+                    rawSummary.equals("blocks", ignoreCase = true) ||
+                    rawSummary.equals("note", ignoreCase = true) ||
+                    rawSummary.equals(title, ignoreCase = true)
+                ) {
+                    if (isEdit) "Proposed edits to \"$title\"" else "Drafted note \"$title\""
+                } else {
+                    rawSummary
+                }
                 val colorId = nObj.get("colorId")?.asString ?: "default"
                 val bgTheme = nObj.get("backgroundTheme")?.asString ?: "none"
                 val isPinned = if (nObj.has("isPinned") && !nObj.get("isPinned").isJsonNull) nObj.get("isPinned").asBoolean else false
@@ -820,11 +1190,14 @@ $notesText
                 updatedMemories = updatedMemories,
                 toolEvents = toolEvents,
                 proposedNotes = proposedNotes,
-                providerBadge = badge
+                providerBadge = badge,
+                suggestedSessionTitle = suggestedTitle
             )
         } catch (_: Exception) {
+            // Even if full JSON parsing fails (e.g. truncated or non-JSON reply), extract partial "reply" if present
+            val fallbackExtracted = extractLiveStreamState(withoutThink).partialReplyText.ifBlank { withoutThink }
             AiAgentTurnResponse(
-                replyText = rawText,
+                replyText = fallbackExtracted,
                 updatedMemories = updatedMemories,
                 toolEvents = emptyList(),
                 proposedNotes = emptyList(),
