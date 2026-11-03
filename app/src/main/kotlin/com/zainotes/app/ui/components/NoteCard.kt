@@ -109,17 +109,11 @@ fun NoteCard(
     var confirmDelete by remember { mutableStateOf(false) }
     var showSizePicker by remember { mutableStateOf(false) }
     var showThemePicker by remember { mutableStateOf(false) }
-    var showFreeformCropDialog by remember { mutableStateOf(false) }
     val sizeSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val themeSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
-    val maxPreviewItems = when (note.cardSize) {
-        CardSize.COMPACT -> 2
-        CardSize.STANDARD -> 4
-        CardSize.WIDE -> 5
-        CardSize.HERO -> 8
-        CardSize.FREEFORM -> Int.MAX_VALUE
-    }
+    // Notes are always in free-form mode by default
+    val maxPreviewItems = Int.MAX_VALUE
 
     val themeEnum = NoteBackgroundTheme.fromId(note.backgroundTheme)
 
@@ -240,14 +234,6 @@ fun NoteCard(
                                     }
                                 )
                                 DropdownMenuItem(
-                                    leadingIcon = { Icon(Icons.Default.AspectRatio, contentDescription = null, modifier = Modifier.size(18.dp)) },
-                                    text = { Text("Interactive Free-form Crop...") },
-                                    onClick = {
-                                        showMenu = false
-                                        showFreeformCropDialog = true
-                                    }
-                                )
-                                DropdownMenuItem(
                                     leadingIcon = { Icon(Icons.Default.ContentCopy, contentDescription = null, modifier = Modifier.size(18.dp)) },
                                     text = { Text("Duplicate note") },
                                     onClick = {
@@ -335,53 +321,22 @@ fun NoteCard(
                     }
                 }
 
-                // Optional metadata footer (relative time + active theme badge)
+                // Optional metadata footer (relative time only)
                 if (settings.showNoteMetadata) {
                     Spacer(modifier = Modifier.height(10.dp))
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        val relTime = remember(note.updatedAt) {
-                            DateUtils.getRelativeTimeSpanString(
-                                note.updatedAt,
-                                System.currentTimeMillis(),
-                                DateUtils.MINUTE_IN_MILLIS,
-                                DateUtils.FORMAT_ABBREV_RELATIVE
-                            ).toString()
-                        }
-                        Text(
-                            text = relTime,
-                            style = MaterialTheme.typography.labelSmall,
-                            color = cardContent.copy(alpha = 0.52f)
-                        )
-
-                        if (themeEnum != NoteBackgroundTheme.NONE) {
-                            Surface(
-                                shape = CircleShape,
-                                color = cardContent.copy(alpha = 0.12f)
-                            ) {
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    modifier = Modifier.padding(horizontal = 7.dp, vertical = 2.dp)
-                                ) {
-                                    Icon(
-                                        imageVector = themeEnum.icon,
-                                        contentDescription = null,
-                                        tint = cardContent.copy(alpha = 0.75f),
-                                        modifier = Modifier.size(11.dp)
-                                    )
-                                    Spacer(modifier = Modifier.width(4.dp))
-                                    Text(
-                                        text = themeEnum.displayName,
-                                        style = MaterialTheme.typography.labelSmall,
-                                        color = cardContent.copy(alpha = 0.75f)
-                                    )
-                                }
-                            }
-                        }
+                    val relTime = remember(note.updatedAt) {
+                        DateUtils.getRelativeTimeSpanString(
+                            note.updatedAt,
+                            System.currentTimeMillis(),
+                            DateUtils.MINUTE_IN_MILLIS,
+                            DateUtils.FORMAT_ABBREV_RELATIVE
+                        ).toString()
                     }
+                    Text(
+                        text = relTime,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = cardContent.copy(alpha = 0.52f)
+                    )
                 }
             }
         }
@@ -395,17 +350,6 @@ fun NoteCard(
             onThemeSelected = onBackgroundThemeChange,
             sheetState = themeSheetState,
             onDismissRequest = { showThemePicker = false }
-        )
-    }
-
-    if (showFreeformCropDialog) {
-        FreeformCropResizeDialog(
-            note = note,
-            onConfirmSize = { newSize ->
-                onCardSizeChange(newSize)
-                showFreeformCropDialog = false
-            },
-            onDismiss = { showFreeformCropDialog = false }
         )
     }
 
@@ -480,7 +424,7 @@ private fun NoteBlockPreviewItem(
                 label = "taskTextColor"
             )
             Row(
-                verticalAlignment = Alignment.CenterVertically,
+                verticalAlignment = Alignment.Top,
                 modifier = rowModifier
             ) {
                 Checkbox(
@@ -491,39 +435,37 @@ private fun NoteBlockPreviewItem(
                         uncheckedColor = cardContentColor.copy(alpha = 0.6f),
                         checkmarkColor = MaterialTheme.colorScheme.onPrimary
                     ),
-                    modifier = Modifier.size(34.dp)
+                    modifier = Modifier.size(30.dp)
                 )
                 Spacer(modifier = Modifier.width(6.dp))
                 Text(
                     text = block.content.ifBlank { "Task" },
                     style = itemStyle.copy(color = taskTextColor),
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
+                    modifier = Modifier.padding(top = 4.dp)
                 )
             }
         }
         BlockType.BULLET -> {
             Row(
-                verticalAlignment = Alignment.CenterVertically,
+                verticalAlignment = Alignment.Top,
                 modifier = rowModifier
             ) {
                 Box(
                     modifier = Modifier
+                        .padding(top = 7.dp)
                         .size(6.dp)
                         .background(cardContentColor.copy(alpha = 0.75f), shape = CircleShape)
                 )
                 Spacer(modifier = Modifier.width(8.dp))
                 Text(
                     text = block.content,
-                    style = itemStyle.copy(color = cardContentColor),
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
+                    style = itemStyle.copy(color = cardContentColor)
                 )
             }
         }
         BlockType.NUMBERED -> {
             Row(
-                verticalAlignment = Alignment.CenterVertically,
+                verticalAlignment = Alignment.Top,
                 modifier = rowModifier
             ) {
                 Text(
@@ -532,24 +474,25 @@ private fun NoteBlockPreviewItem(
                         fontWeight = FontWeight.Bold,
                         color = cardContentColor.copy(alpha = 0.85f)
                     ),
-                    modifier = Modifier.width(18.dp)
+                    modifier = Modifier
+                        .padding(top = 2.dp)
+                        .width(18.dp)
                 )
                 Spacer(modifier = Modifier.width(4.dp))
                 Text(
                     text = block.content,
-                    style = itemStyle.copy(color = cardContentColor),
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
+                    style = itemStyle.copy(color = cardContentColor)
                 )
             }
         }
         BlockType.QUOTE -> {
             Row(
-                verticalAlignment = Alignment.CenterVertically,
+                verticalAlignment = Alignment.Top,
                 modifier = rowModifier
             ) {
                 Box(
                     modifier = Modifier
+                        .padding(top = 3.dp)
                         .width(3.dp)
                         .height(16.dp)
                         .clip(CircleShape)
@@ -558,9 +501,7 @@ private fun NoteBlockPreviewItem(
                 Spacer(modifier = Modifier.width(8.dp))
                 Text(
                     text = block.content,
-                    style = itemStyle.copy(color = cardContentColor.copy(alpha = 0.9f)),
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis
+                    style = itemStyle.copy(color = cardContentColor.copy(alpha = 0.9f))
                 )
             }
         }
@@ -574,10 +515,65 @@ private fun NoteBlockPreviewItem(
                         textDecoration = combinedDecoration,
                         color = cardContentColor
                     ),
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
                     modifier = rowModifier
                 )
+            }
+        }
+        BlockType.CODE -> {
+            if (block.content.isNotBlank()) {
+                Box(
+                    modifier = rowModifier
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(cardContentColor.copy(alpha = 0.09f))
+                        .border(0.5.dp, cardContentColor.copy(alpha = 0.22f), RoundedCornerShape(8.dp))
+                        .padding(horizontal = 8.dp, vertical = 6.dp)
+                ) {
+                    Text(
+                        text = block.content,
+                        style = itemStyle.copy(
+                            fontFamily = FontFamily.Monospace,
+                            fontSize = MaterialTheme.typography.bodySmall.fontSize,
+                            color = cardContentColor
+                        )
+                    )
+                }
+            }
+        }
+        BlockType.TABLE -> {
+            val rows = block.resolvedTable()
+            Column(
+                modifier = rowModifier
+                    .clip(RoundedCornerShape(8.dp))
+                    .border(0.8.dp, cardContentColor.copy(alpha = 0.24f), RoundedCornerShape(8.dp))
+            ) {
+                rows.forEachIndexed { rIdx, rCells ->
+                    val isHeader = rIdx == 0
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(
+                                if (isHeader) cardContentColor.copy(alpha = 0.10f)
+                                else Color.Transparent
+                            )
+                    ) {
+                        rCells.forEach { cell ->
+                            Box(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .border(0.4.dp, cardContentColor.copy(alpha = 0.16f))
+                                    .padding(horizontal = 6.dp, vertical = 4.dp)
+                            ) {
+                                Text(
+                                    text = cell,
+                                    style = MaterialTheme.typography.labelSmall.copy(
+                                        fontWeight = if (isHeader) FontWeight.Bold else FontWeight.Normal,
+                                        color = cardContentColor
+                                    )
+                                )
+                            }
+                        }
+                    }
+                }
             }
         }
         BlockType.TEXT -> {
@@ -585,8 +581,6 @@ private fun NoteBlockPreviewItem(
                 Text(
                     text = block.content,
                     style = itemStyle.copy(color = cardContentColor),
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
                     modifier = rowModifier
                 )
             }

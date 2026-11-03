@@ -33,8 +33,8 @@ class MainActivity : ComponentActivity() {
         val app = application as ZainotesApp
 
         setContent {
-            val themeMode by app.settingsRepository.themeMode.collectAsState(initial = ThemeMode.SYSTEM)
-            val dynamicColor by app.settingsRepository.dynamicColor.collectAsState(initial = true)
+            val themeMode by app.settingsRepository.themeMode.collectAsState(initial = ThemeMode.AMOLED)
+            val dynamicColor by app.settingsRepository.dynamicColor.collectAsState(initial = false)
 
             ZainotesTheme(
                 themeMode = themeMode,

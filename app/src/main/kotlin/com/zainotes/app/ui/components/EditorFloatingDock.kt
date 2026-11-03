@@ -42,7 +42,8 @@ import androidx.compose.material.icons.filled.FormatQuote
 import androidx.compose.material.icons.filled.FormatSize
 import androidx.compose.material.icons.filled.FormatStrikethrough
 import androidx.compose.material.icons.filled.FormatUnderlined
-import androidx.compose.material.icons.filled.Palette
+import androidx.compose.material.icons.filled.TableChart
+import androidx.compose.material.icons.filled.Terminal
 import androidx.compose.material.icons.filled.TextFields
 import androidx.compose.material.icons.filled.Title
 import androidx.compose.material3.FloatingActionButton
@@ -87,7 +88,6 @@ fun EditorFloatingDock(
     activeBlock: NoteBlock?,
     onDone: () -> Unit,
     onAddBlock: (BlockType) -> Unit,
-    onOpenThemePicker: () -> Unit,
     onOpenSizePicker: () -> Unit,
     onToggleBold: () -> Unit = {},
     onToggleItalic: () -> Unit = {},
@@ -343,11 +343,17 @@ fun EditorFloatingDock(
                     )
 
                     EditorDockItem(
-                        icon = Icons.Default.Palette,
-                        label = "Theme",
-                        onClick = onOpenThemePicker,
-                        contentDescription = "Change background color and image theme",
-                        highlight = true
+                        icon = Icons.Default.TableChart,
+                        label = "Table",
+                        onClick = { onAddBlock(BlockType.TABLE) },
+                        contentDescription = "Add interactive table block"
+                    )
+
+                    EditorDockItem(
+                        icon = Icons.Default.Terminal,
+                        label = "Code",
+                        onClick = { onAddBlock(BlockType.CODE) },
+                        contentDescription = "Add code block"
                     )
 
                     EditorDockItem(

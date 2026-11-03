@@ -8,6 +8,8 @@ package com.zainotes.app.ui.screens.aichat
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -23,30 +25,45 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.AddTask
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.CheckBox
 import androidx.compose.material.icons.filled.CheckBoxOutlineBlank
 import androidx.compose.material.icons.filled.Checklist
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.DeleteOutline
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.FiberManualRecord
 import androidx.compose.material.icons.filled.Lightbulb
+import androidx.compose.material.icons.filled.Memory
 import androidx.compose.material.icons.filled.Send
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.ShoppingBag
 import androidx.compose.material.icons.filled.Summarize
+import androidx.compose.material.icons.filled.TableChart
+import androidx.compose.material.icons.filled.Terminal
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledTonalButton
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SuggestionChip
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
@@ -60,171 +77,92 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.zainotes.app.data.ai.AiChatMessage
+import com.zainotes.app.data.ai.AiMemoryItem
+import com.zainotes.app.data.ai.AiProposedNoteAction
+import com.zainotes.app.data.ai.AiProviderClient
 import com.zainotes.app.data.model.BlockType
 import com.zainotes.app.data.model.CardSize
 import com.zainotes.app.data.model.Note
-import com.zainotes.app.data.model.NoteBlock
+import com.zainotes.app.data.model.getNumberedIndex
+import com.zainotes.app.data.preferences.AppSettingsSnapshot
+import com.zainotes.app.data.preferences.SettingsRepository
 import com.zainotes.app.data.repository.NotesRepository
 import com.zainotes.app.ui.theme.CardShapeExpressive
 import com.zainotes.app.ui.theme.ExpressiveMotion
 import kotlinx.coroutines.launch
 
-private data class AssistantDraftResult(
-    val id: Long = System.currentTimeMillis(),
-    val prompt: String,
-    val generatedTitle: String,
-    val summaryText: String,
-    val colorId: String,
-    val backgroundTheme: String,
-    val blocks: List<NoteBlock>,
-    val savedNoteId: Long? = null
-)
-
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AiChatScreen(
     notesRepository: NotesRepository? = null,
+    settingsRepository: SettingsRepository? = null,
     onOpenNote: (Long) -> Unit = {},
+    onNavigateToSettings: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val activeNotes by (notesRepository?.activeNotes?.collectAsState(initial = emptyList())
         ?: remember { mutableStateOf(emptyList()) })
+    val settings by (settingsRepository?.settingsFlow?.collectAsState(initial = AppSettingsSnapshot())
+        ?: remember { mutableStateOf(AppSettingsSnapshot()) })
+
     val coroutineScope = rememberCoroutineScope()
 
     var promptInput by remember { mutableStateOf("") }
-    val results = remember { mutableStateListOf<AssistantDraftResult>() }
+    var isThinking by remember { mutableStateOf(false) }
+    var showMemoryDialog by remember { mutableStateOf(false) }
+
+    val messages = remember { mutableStateListOf<AiChatMessage>() }
 
     val totalNotes = activeNotes.size
     val openTasksCount = activeNotes.sumOf { it.totalTasksCount - it.completedTasksCount }
+    val memories = settings.aiMemories
 
-    fun runSmartAction(promptText: String) {
-        val cleanPrompt = promptText.trim()
-        if (cleanPrompt.isEmpty()) return
+    fun sendChatMessage(rawPrompt: String) {
+        val cleanPrompt = rawPrompt.trim()
+        if (cleanPrompt.isEmpty() || isThinking) return
 
-        val lower = cleanPrompt.lowercase()
-        val draft = when {
-            lower.contains("summarize") || lower.contains("digest") -> {
-                val titles = activeNotes.take(6).mapIndexed { i, n ->
-                    "${i + 1}. ${n.title.ifBlank { "Untitled Note" }} (${n.completedTasksCount}/${n.totalTasksCount} tasks)"
-                }
-                val blocks = mutableListOf(
-                    NoteBlock(type = BlockType.HEADING, content = "Workspace Digest ($totalNotes notes)", isBold = true),
-                    NoteBlock(type = BlockType.QUOTE, content = "$openTasksCount open tasks remaining across your active checklists.")
-                )
-                if (titles.isEmpty()) {
-                    blocks.add(NoteBlock(type = BlockType.TEXT, content = "No notes yet — create your first note or generate a template below."))
-                } else {
-                    titles.forEach { line ->
-                        blocks.add(NoteBlock(type = BlockType.BULLET, content = line))
-                    }
-                }
-                AssistantDraftResult(
-                    prompt = cleanPrompt,
-                    generatedTitle = "Canvas Summary & Digest",
-                    summaryText = "Synthesized $totalNotes active notes and $openTasksCount open tasks.",
-                    colorId = "lavender",
-                    backgroundTheme = "notes",
-                    blocks = blocks
-                )
-            }
-
-            lower.contains("open task") || lower.contains("extract") || lower.contains("action item") -> {
-                val openTasks = activeNotes.flatMap { note ->
-                    note.blocks.filter { it.type == BlockType.TASK && !it.isChecked }.map { block ->
-                        val prefix = if (note.title.isNotBlank()) "[${note.title}] " else ""
-                        NoteBlock(type = BlockType.TASK, content = "$prefix${block.content.ifBlank { "Pending task" }}")
-                    }
-                }
-                val blocks = if (openTasks.isEmpty()) {
-                    listOf(
-                        NoteBlock(type = BlockType.HEADING, content = "All Caught Up!", isBold = true),
-                        NoteBlock(type = BlockType.TASK, content = "Plan priorities for tomorrow"),
-                        NoteBlock(type = BlockType.TASK, content = "Review pinned notes on home canvas")
-                    )
-                } else {
-                    listOf(NoteBlock(type = BlockType.HEADING, content = "Priority Action Items", isBold = true)) + openTasks
-                }
-                AssistantDraftResult(
-                    prompt = cleanPrompt,
-                    generatedTitle = "Master Action Checklist",
-                    summaryText = "Extracted ${openTasks.size} unchecked tasks across your workspace.",
-                    colorId = "mint",
-                    backgroundTheme = "ruled",
-                    blocks = blocks
-                )
-            }
-
-            lower.contains("grocery") || lower.contains("groceries") || lower.contains("shopping") -> {
-                AssistantDraftResult(
-                    prompt = cleanPrompt,
-                    generatedTitle = "Fresh Grocery Run",
-                    summaryText = "Structured a categorized grocery checklist with the Groceries scene.",
-                    colorId = "sage",
-                    backgroundTheme = "groceries",
-                    blocks = listOf(
-                        NoteBlock(type = BlockType.HEADING, content = "Produce & Fresh", isBold = true),
-                        NoteBlock(type = BlockType.TASK, content = "Avocados, baby spinach & cherry tomatoes"),
-                        NoteBlock(type = BlockType.TASK, content = "Honeycrisp apples & lemons"),
-                        NoteBlock(type = BlockType.HEADING, content = "Pantry & Dairy", isBold = true),
-                        NoteBlock(type = BlockType.TASK, content = "Oat milk, Greek yogurt & pasture eggs"),
-                        NoteBlock(type = BlockType.TASK, content = "Sourdough loaf & extra virgin olive oil")
-                    )
-                )
-            }
-
-            lower.contains("travel") || lower.contains("trip") || lower.contains("packing") -> {
-                AssistantDraftResult(
-                    prompt = cleanPrompt,
-                    generatedTitle = "Trip Packing & Itinerary",
-                    summaryText = "Created a travel checklist paired with the Travel & Places scene.",
-                    colorId = "sky",
-                    backgroundTheme = "places",
-                    blocks = listOf(
-                        NoteBlock(type = BlockType.HEADING, content = "Essentials & Documents", isBold = true),
-                        NoteBlock(type = BlockType.TASK, content = "ID / Passport, boarding passes & wallet"),
-                        NoteBlock(type = BlockType.TASK, content = "Phone charger, power bank & travel adapter"),
-                        NoteBlock(type = BlockType.HEADING, content = "Wardrobe & Gear", isBold = true),
-                        NoteBlock(type = BlockType.TASK, content = "Comfortable walking shoes & weather jacket"),
-                        NoteBlock(type = BlockType.TASK, content = "Toiletries kit & sunglasses")
-                    )
-                )
-            }
-
-            else -> {
-                val rawItems = cleanPrompt
-                    .split(",", ";", "\n")
-                    .map { it.trim() }
-                    .filter { it.isNotEmpty() }
-
-                val blocks = mutableListOf(
-                    NoteBlock(type = BlockType.HEADING, content = cleanPrompt.replaceFirstChar { it.uppercase() }, isBold = true)
-                )
-                if (rawItems.size > 1) {
-                    rawItems.forEach { item ->
-                        blocks.add(NoteBlock(type = BlockType.TASK, content = item.replaceFirstChar { it.uppercase() }))
-                    }
-                } else {
-                    blocks.add(NoteBlock(type = BlockType.QUOTE, content = "Key objective: $cleanPrompt"))
-                    blocks.add(NoteBlock(type = BlockType.TASK, content = "Define first actionable milestone for $cleanPrompt", isBold = true))
-                    blocks.add(NoteBlock(type = BlockType.TASK, content = "Outline core steps and resources needed"))
-                    blocks.add(NoteBlock(type = BlockType.TASK, content = "Review progress and refine checklist"))
-                }
-                AssistantDraftResult(
-                    prompt = cleanPrompt,
-                    generatedTitle = cleanPrompt.take(36).replaceFirstChar { it.uppercase() },
-                    summaryText = "Generated a structured note & checklist ready to save to your canvas.",
-                    colorId = "amber",
-                    backgroundTheme = "doodles",
-                    blocks = blocks
-                )
-            }
-        }
-
-        results.add(0, draft)
+        val userMsg = AiChatMessage(
+            role = "user",
+            text = cleanPrompt
+        )
+        messages.add(userMsg)
         promptInput = ""
+        isThinking = true
+
+        coroutineScope.launch {
+            val response = AiProviderClient.runAgentChatTurn(
+                provider = settings.activeAiProvider,
+                apiKey = settings.activeApiKey,
+                modelName = settings.activeModelName,
+                customBaseUrl = settings.aiCustomBaseUrl,
+                userPrompt = cleanPrompt,
+                chatHistory = messages.dropLast(1),
+                memories = memories,
+                activeNotes = activeNotes
+            )
+
+            if (response.updatedMemories != memories && settingsRepository != null) {
+                settingsRepository.setAiMemories(response.updatedMemories)
+            }
+
+            messages.add(
+                AiChatMessage(
+                    role = "assistant",
+                    text = response.replyText,
+                    toolEvents = response.toolEvents,
+                    proposedNotes = response.proposedNotes,
+                    providerBadge = response.providerBadge
+                )
+            )
+            isThinking = false
+        }
     }
 
     Scaffold(
@@ -244,6 +182,40 @@ fun AiChatScreen(
                             text = "Smart Canvas Studio",
                             style = MaterialTheme.typography.titleLarge,
                             fontWeight = FontWeight.ExtraBold
+                        )
+                    }
+                },
+                actions = {
+                    Surface(
+                        onClick = { showMemoryDialog = true },
+                        shape = CircleShape,
+                        color = MaterialTheme.colorScheme.secondaryContainer,
+                        modifier = Modifier.padding(end = 6.dp)
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Memory,
+                                contentDescription = "Persistent Memory",
+                                tint = MaterialTheme.colorScheme.onSecondaryContainer,
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Spacer(Modifier.width(6.dp))
+                            Text(
+                                text = "Memory (${memories.size})",
+                                style = MaterialTheme.typography.labelMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onSecondaryContainer
+                            )
+                        }
+                    }
+
+                    IconButton(onClick = onNavigateToSettings) {
+                        Icon(
+                            imageVector = Icons.Default.Settings,
+                            contentDescription = "Configure AI Provider & API Keys"
                         )
                     }
                 },
@@ -279,6 +251,7 @@ fun AiChatScreen(
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         Surface(
+                            onClick = onNavigateToSettings,
                             shape = CircleShape,
                             color = MaterialTheme.colorScheme.primaryContainer
                         ) {
@@ -294,7 +267,7 @@ fun AiChatScreen(
                                 )
                                 Spacer(Modifier.width(6.dp))
                                 Text(
-                                    text = "100% On-Device Smart Synthesis",
+                                    text = "${settings.activeAiProvider.displayName} · ${settings.activeModelName}",
                                     style = MaterialTheme.typography.labelMedium,
                                     fontWeight = FontWeight.Bold,
                                     color = MaterialTheme.colorScheme.onPrimaryContainer
@@ -303,7 +276,7 @@ fun AiChatScreen(
                         }
 
                         Text(
-                            text = "$totalNotes notes · $openTasksCount tasks",
+                            text = "$totalNotes notes · ${memories.size} memories",
                             style = MaterialTheme.typography.labelMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -312,12 +285,12 @@ fun AiChatScreen(
                     Spacer(Modifier.height(12.dp))
 
                     Text(
-                        text = "Turn thoughts into structured notes & checklists",
+                        text = "Ask anything, manage persistent memory & draft or edit notes",
                         style = MaterialTheme.typography.titleLarge,
                         fontWeight = FontWeight.Bold
                     )
                     Text(
-                        text = "Instantly summarize your existing notes, gather unchecked tasks across cards, or draft a themed checklist from any topic.",
+                        text = "Chat with your AI assistant using tool calling: save facts to persistent memory, draft rich notes (tasks, bullets, 1 2 3, headings, tables, code) for your approval, or edit any existing note.",
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.padding(top = 4.dp, bottom = 14.dp)
@@ -327,19 +300,29 @@ fun AiChatScreen(
                         value = promptInput,
                         onValueChange = { promptInput = it },
                         modifier = Modifier.fillMaxWidth(),
-                        placeholder = { Text("Type a topic or comma-separated tasks...") },
-                        shape = CircleShape,
-                        singleLine = true,
+                        placeholder = { Text("Ask a question, say 'Remember...', or 'Draft/Edit a note...'") },
+                        shape = RoundedCornerShape(22.dp),
+                        singleLine = false,
+                        maxLines = 4,
                         trailingIcon = {
-                            IconButton(
-                                onClick = { runSmartAction(promptInput) },
-                                enabled = promptInput.isNotBlank()
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.Send,
-                                    contentDescription = "Generate note",
-                                    tint = if (promptInput.isNotBlank()) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                            if (isThinking) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier
+                                        .padding(end = 8.dp)
+                                        .size(20.dp),
+                                    strokeWidth = 2.dp
                                 )
+                            } else {
+                                IconButton(
+                                    onClick = { sendChatMessage(promptInput) },
+                                    enabled = promptInput.isNotBlank()
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Send,
+                                        contentDescription = "Send message",
+                                        tint = if (promptInput.isNotBlank()) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
                             }
                         }
                     )
@@ -354,40 +337,51 @@ fun AiChatScreen(
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         SuggestionChip(
-                            onClick = { runSmartAction("Summarize my notes") },
+                            onClick = { sendChatMessage("Summarize my notes with a comparison table") },
                             label = { Text("Summarize notes") },
                             shape = CircleShape
                         )
                         SuggestionChip(
-                            onClick = { runSmartAction("Extract all open tasks") },
+                            onClick = { sendChatMessage("Extract all open tasks") },
                             label = { Text("Collect open tasks ($openTasksCount)") },
                             shape = CircleShape
                         )
                         SuggestionChip(
-                            onClick = { runSmartAction("Weekly grocery run") },
-                            label = { Text("Grocery checklist") },
+                            onClick = { sendChatMessage("Remember that I prefer concise checklists with tables and code snippets") },
+                            label = { Text("Save preference to memory") },
                             shape = CircleShape
                         )
                         SuggestionChip(
-                            onClick = { runSmartAction("Weekend trip packing") },
-                            label = { Text("Travel packing list") },
+                            onClick = { sendChatMessage("Edit Welcome to Zainotes and add a table and code block") },
+                            label = { Text("Edit existing note") },
                             shape = CircleShape
                         )
                     }
                 }
             }
 
-            // Generated Drafts Feed
-            if (results.isNotEmpty()) {
-                Text(
-                    text = "Generated Workspace Drafts",
-                    style = MaterialTheme.typography.titleSmall,
-                    color = MaterialTheme.colorScheme.primary,
-                    fontWeight = FontWeight.Bold,
-                    modifier = Modifier.padding(start = 4.dp, top = 4.dp)
-                )
+            // Conversational Chat & Tool Approval Feed
+            if (messages.isNotEmpty()) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 4.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "AI Conversation & Tool Actions",
+                        style = MaterialTheme.typography.titleSmall,
+                        color = MaterialTheme.colorScheme.primary,
+                        fontWeight = FontWeight.Bold
+                    )
+                    TextButton(onClick = { messages.clear() }) {
+                        Text("Clear Chat")
+                    }
+                }
 
-                results.forEachIndexed { idx, item ->
+                messages.forEachIndexed { msgIdx, msg ->
+                    val isUser = msg.role == "user"
                     AnimatedVisibility(
                         visible = true,
                         enter = expandVertically(ExpressiveMotion.spatialFastSpec()) + fadeIn()
@@ -395,7 +389,11 @@ fun AiChatScreen(
                         Card(
                             shape = CardShapeExpressive,
                             colors = CardDefaults.cardColors(
-                                containerColor = MaterialTheme.colorScheme.surfaceContainer
+                                containerColor = if (isUser) {
+                                    MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.65f)
+                                } else {
+                                    MaterialTheme.colorScheme.surfaceContainer
+                                }
                             ),
                             modifier = Modifier.fillMaxWidth()
                         ) {
@@ -405,98 +403,99 @@ fun AiChatScreen(
                                     horizontalArrangement = Arrangement.SpaceBetween,
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = if (isUser) "You" else "Zainotes AI Assistant",
+                                        style = MaterialTheme.typography.labelLarge,
+                                        fontWeight = FontWeight.Bold,
+                                        color = if (isUser) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.primary
+                                    )
+                                    if (!isUser && msg.providerBadge.isNotBlank()) {
                                         Text(
-                                            text = item.generatedTitle,
-                                            style = MaterialTheme.typography.titleMedium,
-                                            fontWeight = FontWeight.Bold
-                                        )
-                                        Text(
-                                            text = item.summaryText,
-                                            style = MaterialTheme.typography.bodySmall,
+                                            text = msg.providerBadge,
+                                            style = MaterialTheme.typography.labelSmall,
                                             color = MaterialTheme.colorScheme.onSurfaceVariant
                                         )
                                     }
                                 }
 
-                                Spacer(Modifier.height(10.dp))
+                                Spacer(Modifier.height(6.dp))
 
-                                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                                    item.blocks.take(6).forEach { b ->
-                                        Row(
-                                            verticalAlignment = Alignment.CenterVertically,
-                                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                        ) {
-                                            when (b.type) {
-                                                BlockType.TASK -> {
+                                Text(
+                                    text = msg.text,
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = if (isUser) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface
+                                )
+
+                                // Tool Call Badges (e.g. save_memory, update_memory, draft_note, edit_note)
+                                if (msg.toolEvents.isNotEmpty()) {
+                                    Spacer(Modifier.height(10.dp))
+                                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                        msg.toolEvents.forEach { ev ->
+                                            Surface(
+                                                shape = RoundedCornerShape(10.dp),
+                                                color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.7f)
+                                            ) {
+                                                Row(
+                                                    verticalAlignment = Alignment.CenterVertically,
+                                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
+                                                ) {
                                                     Icon(
-                                                        imageVector = Icons.Default.CheckBoxOutlineBlank,
+                                                        imageVector = if (ev.toolName.contains("memory")) Icons.Default.Memory else Icons.Default.AutoAwesome,
                                                         contentDescription = null,
-                                                        tint = MaterialTheme.colorScheme.primary,
-                                                        modifier = Modifier.size(16.dp)
+                                                        tint = MaterialTheme.colorScheme.onSecondaryContainer,
+                                                        modifier = Modifier.size(15.dp)
+                                                    )
+                                                    Spacer(Modifier.width(6.dp))
+                                                    Text(
+                                                        text = "Tool [${ev.toolName}]: ${ev.summary}",
+                                                        style = MaterialTheme.typography.labelSmall,
+                                                        fontWeight = FontWeight.SemiBold,
+                                                        color = MaterialTheme.colorScheme.onSecondaryContainer
                                                     )
                                                 }
-                                                BlockType.BULLET -> {
-                                                    Icon(
-                                                        imageVector = Icons.Default.FiberManualRecord,
-                                                        contentDescription = null,
-                                                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                                        modifier = Modifier.size(7.dp)
-                                                    )
-                                                }
-                                                else -> {}
                                             }
-                                            Text(
-                                                text = b.content,
-                                                style = if (b.type == BlockType.HEADING) {
-                                                    MaterialTheme.typography.labelLarge.copy(
-                                                        fontWeight = FontWeight.Bold,
-                                                        color = MaterialTheme.colorScheme.primary
-                                                    )
-                                                } else {
-                                                    MaterialTheme.typography.bodyMedium
-                                                }
-                                            )
                                         }
                                     }
                                 }
 
-                                Spacer(Modifier.height(12.dp))
-
-                                Row(
-                                    horizontalArrangement = Arrangement.End,
-                                    modifier = Modifier.fillMaxWidth()
-                                ) {
-                                    if (item.savedNoteId != null) {
-                                        FilledTonalButton(
-                                            onClick = { onOpenNote(item.savedNoteId) }
-                                        ) {
-                                            Icon(Icons.Default.Check, contentDescription = null, Modifier.size(18.dp))
-                                            Spacer(Modifier.width(6.dp))
-                                            Text("Saved · Open in Editor")
-                                        }
-                                    } else {
-                                        FilledTonalButton(
-                                            onClick = {
-                                                if (notesRepository != null) {
-                                                    coroutineScope.launch {
-                                                        val newId = notesRepository.saveNote(
-                                                            Note(
-                                                                title = item.generatedTitle,
-                                                                colorId = item.colorId,
-                                                                backgroundTheme = item.backgroundTheme,
-                                                                cardSize = CardSize.WIDE,
-                                                                blocks = item.blocks
+                                // Proposed Note Drafts / Edits Requiring User Approval
+                                if (msg.proposedNotes.isNotEmpty()) {
+                                    Spacer(Modifier.height(12.dp))
+                                    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                                        msg.proposedNotes.forEachIndexed { pIdx, prop ->
+                                            ProposedNoteApprovalCard(
+                                                proposal = prop,
+                                                onApprove = {
+                                                    if (notesRepository != null) {
+                                                        coroutineScope.launch {
+                                                            val targetId = if (prop.actionType == "EDIT_NOTE" && prop.targetNoteId != null) {
+                                                                prop.targetNoteId
+                                                            } else 0L
+                                                            val savedId = notesRepository.saveNote(
+                                                                Note(
+                                                                    id = targetId,
+                                                                    title = prop.title,
+                                                                    colorId = prop.colorId,
+                                                                    backgroundTheme = prop.backgroundTheme,
+                                                                    cardSize = CardSize.FREEFORM,
+                                                                    isPinned = prop.isPinned,
+                                                                    blocks = prop.blocks
+                                                                )
                                                             )
-                                                        )
-                                                        results[idx] = item.copy(savedNoteId = newId)
+                                                            val finalId = if (targetId > 0L) targetId else savedId
+                                                            val updatedList = msg.proposedNotes.toMutableList()
+                                                            updatedList[pIdx] = prop.copy(status = "APPROVED", savedNoteId = finalId)
+                                                            messages[msgIdx] = msg.copy(proposedNotes = updatedList)
+                                                        }
                                                     }
-                                                }
-                                            }
-                                        ) {
-                                            Icon(Icons.Default.AddTask, contentDescription = null, Modifier.size(18.dp))
-                                            Spacer(Modifier.width(6.dp))
-                                            Text("Save to Canvas")
+                                                },
+                                                onDiscard = {
+                                                    val updatedList = msg.proposedNotes.toMutableList()
+                                                    updatedList[pIdx] = prop.copy(status = "DISCARDED")
+                                                    messages[msgIdx] = msg.copy(proposedNotes = updatedList)
+                                                },
+                                                onOpenNote = onOpenNote
+                                            )
                                         }
                                     }
                                 }
@@ -518,30 +517,418 @@ fun AiChatScreen(
             PromptSuggestionCard(
                 icon = Icons.Default.Summarize,
                 title = "Summarize My Workspace ($totalNotes notes)",
-                description = "Compile an instant digest of all your active notes and task progress.",
-                onClick = { runSmartAction("Summarize my notes") }
+                description = "Compile an instant digest with a table & numbered list of all your active notes.",
+                onClick = { sendChatMessage("Summarize my notes with a comparison table") }
             )
 
             PromptSuggestionCard(
                 icon = Icons.Default.Checklist,
                 title = "Collect Unchecked Tasks ($openTasksCount open)",
                 description = "Gather every unfinished checkbox item across all notes into one master checklist.",
-                onClick = { runSmartAction("Extract all open tasks") }
+                onClick = { sendChatMessage("Extract all open tasks") }
             )
 
             PromptSuggestionCard(
                 icon = Icons.Default.ShoppingBag,
                 title = "Generate Grocery & Errand Scene",
-                description = "Create a categorized grocery checklist styled with the Groceries background illustration.",
-                onClick = { runSmartAction("Weekly grocery run") }
+                description = "Draft a categorized grocery checklist styled with the Groceries background illustration.",
+                onClick = { sendChatMessage("Draft a weekly grocery run note with a table and checklist") }
             )
 
             PromptSuggestionCard(
                 icon = Icons.Default.Lightbulb,
-                title = "Project Sprint & Brainstorm Template",
-                description = "Spin up a structured project card with objectives, milestones, and action items.",
-                onClick = { runSmartAction("Project launch milestones, Design review, QA checklist, Release notes") }
+                title = "Project Sprint & Code Template",
+                description = "Draft a full-featured note with headings, tasks, bullets, 1 2 3 list, table, and code.",
+                onClick = { sendChatMessage("Draft a project launch sprint note with code and table") }
             )
+        }
+    }
+
+    // Persistent Memory Inspector & Editor Dialog
+    if (showMemoryDialog) {
+        var newMemKey by remember { mutableStateOf("") }
+        var newMemContent by remember { mutableStateOf("") }
+        var editingMemoryId by remember { mutableStateOf<String?>(null) }
+
+        AlertDialog(
+            onDismissRequest = { showMemoryDialog = false },
+            title = {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        imageVector = Icons.Default.Memory,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    Text(
+                        text = "AI Persistent Memory (${memories.size})",
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+            },
+            text = {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Text(
+                        text = "The AI automatically reads, saves, and edits entries here via tool calling so it remembers your preferences, context, and facts across chats and note drafts.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+
+                    OutlinedTextField(
+                        value = newMemKey,
+                        onValueChange = { newMemKey = it },
+                        label = { Text(if (editingMemoryId != null) "Edit Memory Topic / Key" else "New Memory Topic / Key") },
+                        placeholder = { Text("e.g., Work Schedule, Dietary Preference") },
+                        singleLine = true,
+                        shape = RoundedCornerShape(14.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    )
+
+                    OutlinedTextField(
+                        value = newMemContent,
+                        onValueChange = { newMemContent = it },
+                        label = { Text("Memory Details") },
+                        placeholder = { Text("Facts or instructions for the AI to remember...") },
+                        singleLine = false,
+                        maxLines = 3,
+                        shape = RoundedCornerShape(14.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    )
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.End
+                    ) {
+                        if (editingMemoryId != null) {
+                            TextButton(
+                                onClick = {
+                                    editingMemoryId = null
+                                    newMemKey = ""
+                                    newMemContent = ""
+                                }
+                            ) {
+                                Text("Cancel Edit")
+                            }
+                        }
+                        FilledTonalButton(
+                            onClick = {
+                                val k = newMemKey.trim()
+                                val c = newMemContent.trim()
+                                if (k.isNotBlank() && c.isNotBlank() && settingsRepository != null) {
+                                    coroutineScope.launch {
+                                        val next = memories.toMutableList()
+                                        val targetId = editingMemoryId
+                                        if (targetId != null) {
+                                            val idx = next.indexOfFirst { it.id == targetId }
+                                            if (idx >= 0) {
+                                                next[idx] = next[idx].copy(key = k, content = c, updatedAt = System.currentTimeMillis())
+                                            }
+                                        } else {
+                                            next.add(0, AiMemoryItem(key = k, content = c))
+                                        }
+                                        settingsRepository.setAiMemories(next)
+                                        editingMemoryId = null
+                                        newMemKey = ""
+                                        newMemContent = ""
+                                    }
+                                }
+                            },
+                            enabled = newMemKey.isNotBlank() && newMemContent.isNotBlank()
+                        ) {
+                            Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(16.dp))
+                            Spacer(Modifier.width(4.dp))
+                            Text(if (editingMemoryId != null) "Update Memory" else "Add Memory")
+                        }
+                    }
+
+                    HorizontalDivider()
+
+                    if (memories.isEmpty()) {
+                        Text(
+                            text = "No memories stored yet. Tell the AI 'Remember that...' in chat or add one above.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    } else {
+                        memories.forEach { item ->
+                            Surface(
+                                shape = RoundedCornerShape(14.dp),
+                                color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(12.dp),
+                                    verticalAlignment = Alignment.Top
+                                ) {
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(
+                                            text = item.key,
+                                            style = MaterialTheme.typography.labelLarge,
+                                            fontWeight = FontWeight.Bold,
+                                            color = MaterialTheme.colorScheme.primary
+                                        )
+                                        Text(
+                                            text = item.content,
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurface
+                                        )
+                                    }
+                                    IconButton(
+                                        onClick = {
+                                            editingMemoryId = item.id
+                                            newMemKey = item.key
+                                            newMemContent = item.content
+                                        },
+                                        modifier = Modifier.size(32.dp)
+                                    ) {
+                                        Icon(Icons.Default.Edit, contentDescription = "Edit memory", modifier = Modifier.size(16.dp))
+                                    }
+                                    IconButton(
+                                        onClick = {
+                                            if (settingsRepository != null) {
+                                                coroutineScope.launch {
+                                                    settingsRepository.setAiMemories(memories.filterNot { it.id == item.id })
+                                                }
+                                            }
+                                        },
+                                        modifier = Modifier.size(32.dp)
+                                    ) {
+                                        Icon(
+                                            Icons.Default.DeleteOutline,
+                                            contentDescription = "Delete memory",
+                                            tint = MaterialTheme.colorScheme.error,
+                                            modifier = Modifier.size(16.dp)
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showMemoryDialog = false }) {
+                    Text("Done", fontWeight = FontWeight.Bold)
+                }
+            }
+        )
+    }
+}
+
+@Composable
+private fun ProposedNoteApprovalCard(
+    proposal: AiProposedNoteAction,
+    onApprove: () -> Unit,
+    onDiscard: () -> Unit,
+    onOpenNote: (Long) -> Unit
+) {
+    val isEdit = proposal.actionType == "EDIT_NOTE"
+    Surface(
+        shape = RoundedCornerShape(20.dp),
+        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+        modifier = Modifier
+            .fillMaxWidth()
+            .border(
+                width = 1.dp,
+                color = MaterialTheme.colorScheme.primary.copy(alpha = 0.35f),
+                shape = RoundedCornerShape(20.dp)
+            )
+    ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Surface(
+                    shape = CircleShape,
+                    color = if (isEdit) MaterialTheme.colorScheme.tertiaryContainer else MaterialTheme.colorScheme.primaryContainer
+                ) {
+                    Text(
+                        text = if (isEdit) "Proposed Note Edit" else "Proposed Note Draft",
+                        style = MaterialTheme.typography.labelSmall,
+                        fontWeight = FontWeight.Bold,
+                        color = if (isEdit) MaterialTheme.colorScheme.onTertiaryContainer else MaterialTheme.colorScheme.onPrimaryContainer,
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
+                    )
+                }
+                Text(
+                    text = "${proposal.colorId} · ${proposal.backgroundTheme}",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+
+            Spacer(Modifier.height(8.dp))
+
+            Text(
+                text = proposal.title,
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold
+            )
+            Text(
+                text = proposal.summary,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+
+            Spacer(Modifier.height(10.dp))
+
+            // Full preview of blocks (Task, Bullet, 1 2 3, Heading, Text, Quote, Code, Table)
+            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                proposal.blocks.forEachIndexed { idx, b ->
+                    when (b.type) {
+                        BlockType.TABLE -> {
+                            val rows = b.resolvedTable()
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(8.dp))
+                            ) {
+                                rows.forEachIndexed { rIdx, rCells ->
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .background(
+                                                if (rIdx == 0) MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)
+                                                else Color.Transparent
+                                            )
+                                    ) {
+                                        rCells.forEach { cell ->
+                                            Box(
+                                                modifier = Modifier
+                                                    .weight(1f)
+                                                    .border(0.5.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+                                                    .padding(6.dp)
+                                            ) {
+                                                Text(
+                                                    text = cell,
+                                                    style = MaterialTheme.typography.labelSmall,
+                                                    fontWeight = if (rIdx == 0) FontWeight.Bold else FontWeight.Normal
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        BlockType.CODE -> {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .background(MaterialTheme.colorScheme.surfaceContainerHighest)
+                                    .padding(8.dp)
+                            ) {
+                                Text(
+                                    text = b.content,
+                                    style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace)
+                                )
+                            }
+                        }
+
+                        else -> {
+                            Row(
+                                verticalAlignment = Alignment.Top,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                when (b.type) {
+                                    BlockType.TASK -> {
+                                        Icon(
+                                            imageVector = if (b.isChecked) Icons.Default.CheckBox else Icons.Default.CheckBoxOutlineBlank,
+                                            contentDescription = null,
+                                            tint = MaterialTheme.colorScheme.primary,
+                                            modifier = Modifier
+                                                .padding(top = 2.dp)
+                                                .size(16.dp)
+                                        )
+                                    }
+                                    BlockType.BULLET -> {
+                                        Icon(
+                                            imageVector = Icons.Default.FiberManualRecord,
+                                            contentDescription = null,
+                                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            modifier = Modifier
+                                                .padding(top = 6.dp)
+                                                .size(7.dp)
+                                        )
+                                    }
+                                    BlockType.NUMBERED -> {
+                                        Text(
+                                            text = "${proposal.blocks.getNumberedIndex(idx)}.",
+                                            style = MaterialTheme.typography.labelMedium,
+                                            fontWeight = FontWeight.Bold,
+                                            color = MaterialTheme.colorScheme.primary
+                                        )
+                                    }
+                                    else -> {}
+                                }
+                                Text(
+                                    text = b.content,
+                                    style = when (b.type) {
+                                        BlockType.HEADING -> MaterialTheme.typography.labelLarge.copy(
+                                            fontWeight = FontWeight.Bold,
+                                            color = MaterialTheme.colorScheme.primary
+                                        )
+                                        BlockType.QUOTE -> MaterialTheme.typography.bodySmall.copy(
+                                            fontStyle = FontStyle.Italic
+                                        )
+                                        else -> MaterialTheme.typography.bodyMedium
+                                    }
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+
+            Spacer(Modifier.height(12.dp))
+
+            Row(
+                horizontalArrangement = Arrangement.End,
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                when (proposal.status) {
+                    "APPROVED" -> {
+                        FilledTonalButton(
+                            onClick = { proposal.savedNoteId?.let(onOpenNote) }
+                        ) {
+                            Icon(Icons.Default.Check, contentDescription = null, Modifier.size(18.dp))
+                            Spacer(Modifier.width(6.dp))
+                            Text(if (isEdit) "Edit Applied · Open in Editor" else "Saved · Open in Editor")
+                        }
+                    }
+                    "DISCARDED" -> {
+                        Text(
+                            text = "Proposal Discarded",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    else -> {
+                        OutlinedButton(onClick = onDiscard) {
+                            Icon(Icons.Default.Close, contentDescription = null, Modifier.size(16.dp))
+                            Spacer(Modifier.width(4.dp))
+                            Text("Discard")
+                        }
+                        Spacer(Modifier.width(8.dp))
+                        FilledTonalButton(onClick = onApprove) {
+                            Icon(Icons.Default.AddTask, contentDescription = null, Modifier.size(18.dp))
+                            Spacer(Modifier.width(6.dp))
+                            Text(if (isEdit) "Approve & Apply Edit" else "Approve & Add to Notes")
+                        }
+                    }
+                }
+            }
         }
     }
 }

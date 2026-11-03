@@ -17,6 +17,10 @@ import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
+import com.google.gson.Gson
+import com.google.gson.reflect.TypeToken
+import com.zainotes.app.data.ai.AiMemoryItem
+import com.zainotes.app.data.ai.AiProvider
 import com.zainotes.app.data.model.CardSize
 import com.zainotes.app.ui.theme.ThemeMode
 import kotlinx.coroutines.flow.Flow
@@ -29,7 +33,7 @@ data class AppSettingsSnapshot(
     val dynamicColor: Boolean = true,
     val amoledPureBlackCards: Boolean = false,
     val showCardBackgrounds: Boolean = true,
-    val defaultCardSize: CardSize = CardSize.STANDARD,
+    val defaultCardSize: CardSize = CardSize.FREEFORM,
     val defaultNoteColor: String = "default",
     val defaultBackgroundTheme: String = "none",
     val gridColumns: Int = 2,
@@ -39,10 +43,34 @@ data class AppSettingsSnapshot(
     val confirmNoteDelete: Boolean = true,
     val strikethroughCompleted: Boolean = true,
     val moveCheckedToBottom: Boolean = false,
-    val autoFocusNewNote: Boolean = true
-)
+    val autoFocusNewNote: Boolean = true,
+    val aiProviderId: String = AiProvider.GEMINI.id,
+    val aiApiKeys: Map<String, String> = emptyMap(),
+    val aiSelectedModels: Map<String, String> = emptyMap(),
+    val aiFetchedModels: Map<String, List<String>> = emptyMap(),
+    val aiCustomBaseUrl: String = "https://api.openai.com/v1",
+    val aiMemories: List<AiMemoryItem> = emptyList()
+) {
+    val activeAiProvider: AiProvider
+        get() = AiProvider.fromId(aiProviderId)
+
+    val activeApiKey: String
+        get() = aiApiKeys[activeAiProvider.id].orEmpty()
+
+    val activeModelName: String
+        get() = aiSelectedModels[activeAiProvider.id]?.takeIf { it.isNotBlank() }
+            ?: activeAiProvider.defaultModel
+
+    val activeAvailableModels: List<String>
+        get() {
+            val fetched = aiFetchedModels[activeAiProvider.id].orEmpty()
+            return if (fetched.isNotEmpty()) fetched else activeAiProvider.suggestedModels
+        }
+}
 
 class SettingsRepository(private val context: Context) {
+
+    private val gson = Gson()
 
     private object PreferencesKeys {
         val THEME_MODE = stringPreferencesKey("theme_mode")
@@ -60,6 +88,12 @@ class SettingsRepository(private val context: Context) {
         val STRIKETHROUGH_COMPLETED = booleanPreferencesKey("strikethrough_completed")
         val MOVE_CHECKED_TO_BOTTOM = booleanPreferencesKey("move_checked_to_bottom")
         val AUTO_FOCUS_NEW_NOTE = booleanPreferencesKey("auto_focus_new_note")
+        val AI_PROVIDER_ID = stringPreferencesKey("ai_provider_id")
+        val AI_API_KEYS_JSON = stringPreferencesKey("ai_api_keys_json")
+        val AI_SELECTED_MODELS_JSON = stringPreferencesKey("ai_selected_models_json")
+        val AI_FETCHED_MODELS_JSON = stringPreferencesKey("ai_fetched_models_json")
+        val AI_CUSTOM_BASE_URL = stringPreferencesKey("ai_custom_base_url")
+        val AI_MEMORIES_JSON = stringPreferencesKey("ai_memories_json")
     }
 
     val settingsFlow: Flow<AppSettingsSnapshot> = context.dataStore.data.map { preferences ->
@@ -70,7 +104,40 @@ class SettingsRepository(private val context: Context) {
         } catch (_: Exception) {
             ThemeMode.SYSTEM
         }
-        val sizeName = preferences[PreferencesKeys.DEFAULT_CARD_SIZE] ?: CardSize.STANDARD.name
+        val sizeName = preferences[PreferencesKeys.DEFAULT_CARD_SIZE] ?: CardSize.FREEFORM.name
+
+        val keysMap: Map<String, String> = try {
+            val json = preferences[PreferencesKeys.AI_API_KEYS_JSON]
+            if (json.isNullOrBlank()) emptyMap()
+            else gson.fromJson(json, object : TypeToken<Map<String, String>>() {}.type) ?: emptyMap()
+        } catch (_: Exception) {
+            emptyMap()
+        }
+
+        val selectedModelsMap: Map<String, String> = try {
+            val json = preferences[PreferencesKeys.AI_SELECTED_MODELS_JSON]
+            if (json.isNullOrBlank()) emptyMap()
+            else gson.fromJson(json, object : TypeToken<Map<String, String>>() {}.type) ?: emptyMap()
+        } catch (_: Exception) {
+            emptyMap()
+        }
+
+        val fetchedModelsMap: Map<String, List<String>> = try {
+            val json = preferences[PreferencesKeys.AI_FETCHED_MODELS_JSON]
+            if (json.isNullOrBlank()) emptyMap()
+            else gson.fromJson(json, object : TypeToken<Map<String, List<String>>>() {}.type) ?: emptyMap()
+        } catch (_: Exception) {
+            emptyMap()
+        }
+
+        val memoriesList: List<AiMemoryItem> = try {
+            val json = preferences[PreferencesKeys.AI_MEMORIES_JSON]
+            if (json.isNullOrBlank()) emptyList()
+            else gson.fromJson(json, object : TypeToken<List<AiMemoryItem>>() {}.type) ?: emptyList()
+        } catch (_: Exception) {
+            emptyList()
+        }
+
         AppSettingsSnapshot(
             themeMode = resolvedTheme,
             dynamicColor = preferences[PreferencesKeys.DYNAMIC_COLOR] ?: true,
@@ -86,7 +153,13 @@ class SettingsRepository(private val context: Context) {
             confirmNoteDelete = preferences[PreferencesKeys.CONFIRM_NOTE_DELETE] ?: true,
             strikethroughCompleted = preferences[PreferencesKeys.STRIKETHROUGH_COMPLETED] ?: true,
             moveCheckedToBottom = preferences[PreferencesKeys.MOVE_CHECKED_TO_BOTTOM] ?: false,
-            autoFocusNewNote = preferences[PreferencesKeys.AUTO_FOCUS_NEW_NOTE] ?: true
+            autoFocusNewNote = preferences[PreferencesKeys.AUTO_FOCUS_NEW_NOTE] ?: true,
+            aiProviderId = preferences[PreferencesKeys.AI_PROVIDER_ID] ?: AiProvider.GEMINI.id,
+            aiApiKeys = keysMap,
+            aiSelectedModels = selectedModelsMap,
+            aiFetchedModels = fetchedModelsMap,
+            aiCustomBaseUrl = preferences[PreferencesKeys.AI_CUSTOM_BASE_URL] ?: "https://api.openai.com/v1",
+            aiMemories = memoriesList
         )
     }
 
@@ -164,6 +237,60 @@ class SettingsRepository(private val context: Context) {
 
     suspend fun setAutoFocusNewNote(enabled: Boolean) {
         context.dataStore.edit { it[PreferencesKeys.AUTO_FOCUS_NEW_NOTE] = enabled }
+    }
+
+    suspend fun setAiProviderId(providerId: String) {
+        context.dataStore.edit { it[PreferencesKeys.AI_PROVIDER_ID] = providerId }
+    }
+
+    suspend fun setAiApiKey(providerId: String, apiKey: String) {
+        context.dataStore.edit { prefs ->
+            val current: MutableMap<String, String> = try {
+                val json = prefs[PreferencesKeys.AI_API_KEYS_JSON]
+                if (json.isNullOrBlank()) mutableMapOf()
+                else gson.fromJson<Map<String, String>>(json, object : TypeToken<Map<String, String>>() {}.type)?.toMutableMap() ?: mutableMapOf()
+            } catch (_: Exception) {
+                mutableMapOf()
+            }
+            current[providerId] = apiKey.trim()
+            prefs[PreferencesKeys.AI_API_KEYS_JSON] = gson.toJson(current)
+        }
+    }
+
+    suspend fun setAiSelectedModel(providerId: String, modelName: String) {
+        context.dataStore.edit { prefs ->
+            val current: MutableMap<String, String> = try {
+                val json = prefs[PreferencesKeys.AI_SELECTED_MODELS_JSON]
+                if (json.isNullOrBlank()) mutableMapOf()
+                else gson.fromJson<Map<String, String>>(json, object : TypeToken<Map<String, String>>() {}.type)?.toMutableMap() ?: mutableMapOf()
+            } catch (_: Exception) {
+                mutableMapOf()
+            }
+            current[providerId] = modelName.trim()
+            prefs[PreferencesKeys.AI_SELECTED_MODELS_JSON] = gson.toJson(current)
+        }
+    }
+
+    suspend fun setAiFetchedModels(providerId: String, models: List<String>) {
+        context.dataStore.edit { prefs ->
+            val current: MutableMap<String, List<String>> = try {
+                val json = prefs[PreferencesKeys.AI_FETCHED_MODELS_JSON]
+                if (json.isNullOrBlank()) mutableMapOf()
+                else gson.fromJson<Map<String, List<String>>>(json, object : TypeToken<Map<String, List<String>>>() {}.type)?.toMutableMap() ?: mutableMapOf()
+            } catch (_: Exception) {
+                mutableMapOf()
+            }
+            current[providerId] = models
+            prefs[PreferencesKeys.AI_FETCHED_MODELS_JSON] = gson.toJson(current)
+        }
+    }
+
+    suspend fun setAiCustomBaseUrl(baseUrl: String) {
+        context.dataStore.edit { it[PreferencesKeys.AI_CUSTOM_BASE_URL] = baseUrl.trim() }
+    }
+
+    suspend fun setAiMemories(memories: List<AiMemoryItem>) {
+        context.dataStore.edit { it[PreferencesKeys.AI_MEMORIES_JSON] = gson.toJson(memories) }
     }
 
     suspend fun resetToDefaults() {

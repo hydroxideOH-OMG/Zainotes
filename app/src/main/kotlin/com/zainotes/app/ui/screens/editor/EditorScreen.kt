@@ -104,40 +104,13 @@ fun EditorScreen(
         topBar = {
             TopAppBar(
                 title = {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(
-                            text = if (state.title.isBlank()) "New note" else "Edit note",
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.SemiBold,
-                            color = animatedContentColor
-                        )
-                        if (activeTheme != NoteBackgroundTheme.NONE) {
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Surface(
-                                onClick = { showThemePicker = true },
-                                shape = CircleShape,
-                                color = animatedContentColor.copy(alpha = 0.14f)
-                            ) {
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
-                                ) {
-                                    Icon(
-                                        imageVector = activeTheme.icon,
-                                        contentDescription = null,
-                                        tint = animatedContentColor,
-                                        modifier = Modifier.size(14.dp)
-                                    )
-                                    Spacer(modifier = Modifier.width(4.dp))
-                                    Text(
-                                        text = activeTheme.displayName,
-                                        style = MaterialTheme.typography.labelSmall,
-                                        color = animatedContentColor
-                                    )
-                                }
-                            }
-                        }
-                    }
+                    Text(
+                        text = if (state.title.isBlank()) "New note" else "Edit note",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.SemiBold,
+                        maxLines = 1,
+                        color = animatedContentColor
+                    )
                 },
                 navigationIcon = {
                     IconButton(onClick = onNavigateBack) {
@@ -199,7 +172,6 @@ fun EditorScreen(
                 activeBlock = state.activeBlock,
                 onDone = onNavigateBack,
                 onAddBlock = { type -> viewModel.addBlock(type) },
-                onOpenThemePicker = { showThemePicker = true },
                 onOpenSizePicker = { showSizePicker = true },
                 onToggleBold = viewModel::toggleBold,
                 onToggleItalic = viewModel::toggleItalic,
@@ -244,7 +216,8 @@ fun EditorScreen(
                     ),
                     label = { Text("Note title", color = animatedContentColor.copy(alpha = 0.75f)) },
                     placeholder = { Text("Give this note a name...", color = animatedContentColor.copy(alpha = 0.45f)) },
-                    singleLine = true,
+                    singleLine = false,
+                    maxLines = 3,
                     shape = MaterialTheme.shapes.large,
                     colors = OutlinedTextFieldDefaults.colors(
                         focusedBorderColor = MaterialTheme.colorScheme.primary,
@@ -273,6 +246,7 @@ fun EditorScreen(
                             strikethroughCompleted = state.strikethroughCompleted,
                             onFocused = { viewModel.setActiveBlock(block.id) },
                             onContentChange = { newText -> viewModel.updateBlockContent(block.id, newText) },
+                            onTableChange = { newTable -> viewModel.updateTableData(block.id, newTable) },
                             onTaskToggle = { viewModel.toggleTaskChecked(block.id) },
                             onConvertType = { newType -> viewModel.convertBlockType(block.id, newType) },
                             onDelete = { viewModel.deleteBlock(block.id) },

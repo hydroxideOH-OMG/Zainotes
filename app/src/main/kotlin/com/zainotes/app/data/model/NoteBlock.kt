@@ -17,7 +17,9 @@ enum class BlockType {
     BULLET,
     NUMBERED,
     HEADING,
-    QUOTE
+    QUOTE,
+    CODE,
+    TABLE
 }
 
 data class NoteBlock(
@@ -33,11 +35,41 @@ data class NoteBlock(
     val isHighlighted: Boolean = false,
     val isMonospace: Boolean = false,
     val textScale: Int = 0, // -1 = Small, 0 = Normal, 1 = Large
-    val textAlign: Int = 0  // 0 = Start, 1 = Center, 2 = End
+    val textAlign: Int = 0, // 0 = Start, 1 = Center, 2 = End
+    val tableData: List<List<String>> = emptyList()
 ) {
     val hasCustomFormatting: Boolean
         get() = isBold || isItalic || isUnderline || isStrikethrough ||
             isHighlighted || isMonospace || textScale != 0 || textAlign != 0
+
+    fun resolvedTable(): List<List<String>> {
+        if (tableData.isNotEmpty() && tableData.first().isNotEmpty()) {
+            val cols = tableData.maxOf { it.size }.coerceAtLeast(1)
+            return tableData.map { row ->
+                if (row.size < cols) row + List(cols - row.size) { "" } else row
+            }
+        }
+        if (content.isNotBlank()) {
+            val rows = content.lines()
+                .map { line -> line.trim().removePrefix("|").removeSuffix("|").split("|").map { it.trim() } }
+                .filter { row -> row.any { cell -> cell.isNotEmpty() && !cell.all { ch -> ch == '-' || ch == ':' } } }
+            if (rows.isNotEmpty()) {
+                val cols = rows.maxOf { it.size }.coerceAtLeast(2)
+                return rows.map { row ->
+                    if (row.size < cols) row + List(cols - row.size) { "" } else row
+                }
+            }
+        }
+        return listOf(
+            listOf("Header 1", "Header 2", "Header 3"),
+            listOf("", "", ""),
+            listOf("", "", "")
+        )
+    }
+}
+
+fun List<List<String>>.toTableMarkdown(): String {
+    return joinToString("\n") { row -> row.joinToString(" | ") }
 }
 
 /**

@@ -32,7 +32,7 @@ data class EditorUiState(
     val title: String = "",
     val colorId: String = "default",
     val backgroundTheme: String = "none",
-    val cardSize: CardSize = CardSize.STANDARD,
+    val cardSize: CardSize = CardSize.FREEFORM,
     val isPinned: Boolean = false,
     val isArchived: Boolean = false,
     val blocks: List<NoteBlock> = listOf(NoteBlock(type = BlockType.TEXT)),
@@ -145,11 +145,22 @@ class EditorViewModel(
     fun addBlock(type: BlockType, targetIndex: Int = -1) {
         _uiState.update { state ->
             val mutable = state.blocks.toMutableList()
+            val defaultTable = if (type == BlockType.TABLE) {
+                listOf(
+                    listOf("Column 1", "Column 2", "Column 3"),
+                    listOf("", "", ""),
+                    listOf("", "", "")
+                )
+            } else {
+                emptyList()
+            }
             val newBlock = NoteBlock(
                 id = UUID.randomUUID().toString(),
                 type = type,
-                content = "",
-                order = mutable.size
+                content = if (type == BlockType.TABLE) "Column 1 | Column 2 | Column 3\n |  | \n |  | " else "",
+                order = mutable.size,
+                isMonospace = type == BlockType.CODE,
+                tableData = defaultTable
             )
             if (targetIndex in 0..mutable.size) {
                 mutable.add(targetIndex, newBlock)
@@ -165,6 +176,21 @@ class EditorViewModel(
         _uiState.update { state ->
             val updated = state.blocks.map { block ->
                 if (block.id == blockId) block.copy(content = content) else block
+            }
+            state.copy(blocks = updated, activeBlockId = blockId)
+        }
+        autoSave()
+    }
+
+    fun updateTableData(blockId: String, newTable: List<List<String>>) {
+        _uiState.update { state ->
+            val updated = state.blocks.map { block ->
+                if (block.id == blockId) {
+                    val md = newTable.joinToString("\n") { row -> row.joinToString(" | ") }
+                    block.copy(tableData = newTable, content = md)
+                } else {
+                    block
+                }
             }
             state.copy(blocks = updated, activeBlockId = blockId)
         }
@@ -191,7 +217,20 @@ class EditorViewModel(
     fun convertBlockType(blockId: String, newType: BlockType) {
         _uiState.update { state ->
             val updated = state.blocks.map { block ->
-                if (block.id == blockId) block.copy(type = newType) else block
+                if (block.id == blockId) {
+                    val nextTable = if (newType == BlockType.TABLE && block.tableData.isEmpty()) {
+                        block.resolvedTable()
+                    } else {
+                        block.tableData
+                    }
+                    block.copy(
+                        type = newType,
+                        isMonospace = if (newType == BlockType.CODE) true else block.isMonospace,
+                        tableData = nextTable
+                    )
+                } else {
+                    block
+                }
             }
             state.copy(blocks = updated, activeBlockId = blockId)
         }

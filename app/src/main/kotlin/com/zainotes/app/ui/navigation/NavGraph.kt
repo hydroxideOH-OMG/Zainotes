@@ -147,8 +147,12 @@ fun ZainotesNavGraph(
             ) {
                 AiChatScreen(
                     notesRepository = notesRepository,
+                    settingsRepository = settingsRepository,
                     onOpenNote = { noteId ->
                         navController.navigate(Screen.Editor.createRoute(noteId))
+                    },
+                    onNavigateToSettings = {
+                        navController.navigateTopLevel(Screen.Settings.route)
                     }
                 )
             }

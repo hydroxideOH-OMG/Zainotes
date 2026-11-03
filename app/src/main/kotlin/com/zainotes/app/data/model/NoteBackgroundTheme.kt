@@ -85,17 +85,17 @@ enum class NoteBackgroundTheme(
     ),
     DUSK(
         id = "dusk",
-        displayName = "Night Sky",
+        displayName = "Dusk & Mountains",
         icon = Icons.Default.Nightlight
     ),
     NATURE(
         id = "nature",
-        displayName = "Flora & Nature",
+        displayName = "Botanical Nature",
         icon = Icons.Default.Park
     ),
     DOODLES(
         id = "doodles",
-        displayName = "Doodles",
+        displayName = "Abstract Doodles",
         icon = Icons.Default.Brush
     ),
     RULED(
