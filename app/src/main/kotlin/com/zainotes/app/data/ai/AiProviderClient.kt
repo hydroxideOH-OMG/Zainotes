@@ -160,10 +160,19 @@ data class AiProposedNoteAction(
     val savedNoteId: Long? = null
 )
 
+data class AiAttachedImage(
+    val id: String = UUID.randomUUID().toString(),
+    val label: String,
+    val mimeType: String = "image/jpeg",
+    val base64Data: String = ""
+)
+
 data class AiChatMessage(
     val id: String = UUID.randomUUID().toString(),
     val role: String, // "user" or "assistant"
     val text: String,
+    val attachedNoteTitles: List<String> = emptyList(),
+    val attachedImages: List<AiAttachedImage> = emptyList(),
     val toolEvents: List<AiToolEvent> = emptyList(),
     val proposedNotes: List<AiProposedNoteAction> = emptyList(),
     val providerBadge: String = ""
@@ -283,7 +292,8 @@ object AiProviderClient {
     }
 
     /**
-     * Runs a multi-capability AI chat turn with Persistent Memory and Note Drafting/Editing tools.
+     * Runs a live AI chat turn with Persistent Memory and Note Drafting/Editing tools.
+     * Offline fallback is removed: requires a valid API key configured in Settings.
      */
     suspend fun runAgentChatTurn(
         provider: AiProvider,
@@ -293,47 +303,76 @@ object AiProviderClient {
         userPrompt: String,
         chatHistory: List<AiChatMessage>,
         memories: List<AiMemoryItem>,
-        activeNotes: List<Note>
+        activeNotes: List<Note>,
+        attachedNotes: List<Note> = emptyList(),
+        attachedImages: List<AiAttachedImage> = emptyList()
     ): AiAgentTurnResponse = withContext(Dispatchers.IO) {
         val cleanKey = apiKey.trim()
         val chosenModel = modelName.ifBlank { provider.defaultModel }
 
-        if (cleanKey.isNotBlank()) {
-            val systemInstruction = buildAgentSystemPrompt(memories, activeNotes)
-            val llmResult = try {
-                when (provider) {
-                    AiProvider.GEMINI -> callGeminiJsonAgent(cleanKey, chosenModel, systemInstruction, chatHistory, userPrompt)
-                    AiProvider.ANTHROPIC -> callAnthropicJsonAgent(cleanKey, chosenModel, systemInstruction, chatHistory, userPrompt)
-                    else -> {
-                        val base = if (provider == AiProvider.CUSTOM && customBaseUrl.isNotBlank()) {
-                            customBaseUrl.trim().trimEnd('/')
-                        } else {
-                            provider.defaultBaseUrl.trimEnd('/')
-                        }
-                        callOpenAiCompatibleJsonAgent(base, cleanKey, chosenModel, systemInstruction, chatHistory, userPrompt)
-                    }
-                }
-            } catch (e: Exception) {
-                Result.failure(e)
-            }
+        if (cleanKey.isBlank()) {
+            return@withContext AiAgentTurnResponse(
+                replyText = "API key is not set. Set an API key in the settings.",
+                updatedMemories = memories,
+                toolEvents = emptyList(),
+                proposedNotes = emptyList(),
+                providerBadge = "${provider.displayName} · Missing Key"
+            )
+        }
 
-            llmResult.getOrNull()?.let { rawOutput ->
-                return@withContext parseAgentStructuredResponse(
+        val attachmentContext = buildString {
+            if (attachedNotes.isNotEmpty()) {
+                append("\n\n[ATTACHED NOTES FOR CONTEXT]:\n")
+                attachedNotes.forEach { n ->
+                    val blocksDump = n.blocks.joinToString("\n") { b ->
+                        "  - [${b.type.name}] ${b.content}"
+                    }
+                    append("Note #${n.id} \"${n.title}\":\n$blocksDump\n")
+                }
+            }
+            if (attachedImages.isNotEmpty()) {
+                append("\n\n[ATTACHED IMAGES]: ${attachedImages.joinToString(", ") { it.label }}")
+            }
+        }
+
+        val enrichedPrompt = userPrompt + attachmentContext
+        val systemInstruction = buildAgentSystemPrompt(memories, activeNotes)
+
+        val llmResult = try {
+            when (provider) {
+                AiProvider.GEMINI -> callGeminiJsonAgent(cleanKey, chosenModel, systemInstruction, chatHistory, enrichedPrompt, attachedImages)
+                AiProvider.ANTHROPIC -> callAnthropicJsonAgent(cleanKey, chosenModel, systemInstruction, chatHistory, enrichedPrompt)
+                else -> {
+                    val base = if (provider == AiProvider.CUSTOM && customBaseUrl.isNotBlank()) {
+                        customBaseUrl.trim().trimEnd('/')
+                    } else {
+                        provider.defaultBaseUrl.trimEnd('/')
+                    }
+                    callOpenAiCompatibleJsonAgent(base, cleanKey, chosenModel, systemInstruction, chatHistory, enrichedPrompt)
+                }
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+
+        llmResult.fold(
+            onSuccess = { rawOutput ->
+                parseAgentStructuredResponse(
                     rawText = rawOutput,
                     currentMemories = memories,
                     activeNotes = activeNotes,
                     badge = "${provider.displayName} · $chosenModel"
                 )
+            },
+            onFailure = { err ->
+                AiAgentTurnResponse(
+                    replyText = "Could not complete request with ${provider.displayName} ($chosenModel): ${err.message ?: "Network or API key error"}",
+                    updatedMemories = memories,
+                    toolEvents = emptyList(),
+                    proposedNotes = emptyList(),
+                    providerBadge = "${provider.displayName} · Error"
+                )
             }
-        }
-
-        // Smart local agent with full persistent memory & note tool-calling support
-        runLocalSmartAgent(
-            userPrompt = userPrompt,
-            currentMemories = memories,
-            activeNotes = activeNotes,
-            badge = if (cleanKey.isBlank()) "Built-in Smart Agent (Add API key in Settings for cloud LLMs)"
-            else "${provider.displayName} · $chosenModel"
         )
     }
 
@@ -422,7 +461,8 @@ Rules for Tool Actions:
         model: String,
         systemInstruction: String,
         history: List<AiChatMessage>,
-        userPrompt: String
+        userPrompt: String,
+        attachedImages: List<AiAttachedImage> = emptyList()
     ): Result<String> {
         val endpoint = "https://generativelanguage.googleapis.com/v1beta/models/$model:generateContent?key=$apiKey"
         val payload = JsonObject().apply {
@@ -443,6 +483,16 @@ Rules for Tool Actions:
             contentsArr.add(JsonObject().apply {
                 addProperty("role", "user")
                 add("parts", JsonArray().apply {
+                    attachedImages.forEach { img ->
+                        if (img.base64Data.isNotBlank()) {
+                            add(JsonObject().apply {
+                                add("inlineData", JsonObject().apply {
+                                    addProperty("mimeType", img.mimeType)
+                                    addProperty("data", img.base64Data)
+                                })
+                            })
+                        }
+                    }
                     add(JsonObject().apply { addProperty("text", userPrompt) })
                 })
             })
@@ -693,7 +743,6 @@ Rules for Tool Actions:
                     )
                 }
 
-                val actionType = if (isEdit) "EDIT_NOTE" else "DRAFT_NOTE"
                 val resolvedTarget = targetId ?: activeNotes.find { it.title.equals(title, ignoreCase = true) }?.id
                 proposedNotes.add(
                     AiProposedNoteAction(
@@ -732,304 +781,6 @@ Rules for Tool Actions:
                 providerBadge = badge
             )
         }
-    }
-
-    /**
-     * Intelligent local fallback agent that executes real tool calls (`save_memory`, `update_memory`,
-     * `delete_memory`, `draft_note`, `edit_note`) with full block support (Task, Bullet, 1 2 3,
-     * Heading, Text, Quote, Code, Table).
-     */
-    private fun runLocalSmartAgent(
-        userPrompt: String,
-        currentMemories: List<AiMemoryItem>,
-        activeNotes: List<Note>,
-        badge: String
-    ): AiAgentTurnResponse {
-        val clean = userPrompt.trim()
-        val lower = clean.lowercase()
-        val updatedMemories = currentMemories.toMutableList()
-        val toolEvents = mutableListOf<AiToolEvent>()
-        val proposedNotes = mutableListOf<AiProposedNoteAction>()
-
-        // 1. Check for memory save / update / delete commands
-        if (lower.startsWith("remember ") || lower.contains("save to memory") || lower.contains("remember that")) {
-            val fact = clean
-                .replace(Regex("(?i)^(please\\s+)?(remember\\s+that|remember|save\\s+to\\s+memory:?\\s*)"), "")
-                .trim()
-            val key = fact.take(28).split(" ").take(4).joinToString(" ").replaceFirstChar { it.uppercase() }.ifBlank { "User Preference" }
-            val existingIdx = updatedMemories.indexOfFirst { it.key.equals(key, ignoreCase = true) }
-            if (existingIdx >= 0) {
-                updatedMemories[existingIdx] = updatedMemories[existingIdx].copy(content = fact, updatedAt = System.currentTimeMillis())
-                toolEvents.add(AiToolEvent(toolName = "update_memory", summary = "Updated memory \"$key\""))
-            } else {
-                updatedMemories.add(0, AiMemoryItem(key = key, content = fact))
-                toolEvents.add(AiToolEvent(toolName = "save_memory", summary = "Saved to persistent memory: \"$key\""))
-            }
-            if (!lower.contains("note") && !lower.contains("draft") && !lower.contains("create")) {
-                return AiAgentTurnResponse(
-                    replyText = "I've saved that to your persistent memory under **$key**: \"$fact\". I will automatically reference this whenever you ask questions or draft notes.",
-                    updatedMemories = updatedMemories,
-                    toolEvents = toolEvents,
-                    proposedNotes = emptyList(),
-                    providerBadge = badge
-                )
-            }
-        }
-
-        if (lower.startsWith("forget ") || lower.contains("delete memory") || lower.contains("clear memory")) {
-            val target = clean.replace(Regex("(?i)^(forget|delete\\s+memory|clear\\s+memory)\\s*"), "").trim()
-            val removed = if (target.isBlank() || target == "all") {
-                val hadAny = updatedMemories.isNotEmpty()
-                updatedMemories.clear()
-                hadAny
-            } else {
-                updatedMemories.removeAll { it.key.contains(target, ignoreCase = true) || it.content.contains(target, ignoreCase = true) }
-            }
-            if (removed) {
-                toolEvents.add(AiToolEvent(toolName = "delete_memory", summary = "Removed matching entry from persistent memory"))
-            }
-            return AiAgentTurnResponse(
-                replyText = if (removed) "Done — I've updated your persistent memory." else "I couldn't find a matching memory entry to remove.",
-                updatedMemories = updatedMemories,
-                toolEvents = toolEvents,
-                proposedNotes = emptyList(),
-                providerBadge = badge
-            )
-        }
-
-        // 2. Check if user wants to EDIT an existing note
-        val matchedExistingNote = activeNotes.firstOrNull { note ->
-            note.title.isNotBlank() && lower.contains(note.title.lowercase()) &&
-                (lower.contains("edit") || lower.contains("update") || lower.contains("add") || lower.contains("modify") || lower.contains("change"))
-        } ?: if (lower.startsWith("edit note") || lower.startsWith("update note")) activeNotes.firstOrNull() else null
-
-        if (matchedExistingNote != null) {
-            val newBlocks = matchedExistingNote.blocks.toMutableList()
-            if (lower.contains("table")) {
-                val tbl = listOf(
-                    listOf("Milestone", "Owner", "Status"),
-                    listOf("Core Spec", "Design", "Done"),
-                    listOf("QA & Polish", "Engineering", "In Progress")
-                )
-                newBlocks.add(
-                    NoteBlock(
-                        type = BlockType.TABLE,
-                        content = tbl.joinToString("\n") { it.joinToString(" | ") },
-                        tableData = tbl
-                    )
-                )
-            }
-            if (lower.contains("code")) {
-                newBlocks.add(
-                    NoteBlock(
-                        type = BlockType.CODE,
-                        content = "fun verifyCanvas() {\n    println(\"Zainotes Expressive Ready\")\n}",
-                        isMonospace = true
-                    )
-                )
-            }
-            if (lower.contains("task") || lower.contains("check")) {
-                newBlocks.add(NoteBlock(type = BlockType.TASK, content = "Follow-up task added by AI Assistant"))
-            }
-            if (lower.contains("bullet")) {
-                newBlocks.add(NoteBlock(type = BlockType.BULLET, content = "Key highlight added to ${matchedExistingNote.title}"))
-            }
-            if (lower.contains("number") || lower.contains("1 2 3") || lower.contains("step")) {
-                newBlocks.add(NoteBlock(type = BlockType.NUMBERED, content = "First prioritized step"))
-                newBlocks.add(NoteBlock(type = BlockType.NUMBERED, content = "Second prioritized step"))
-            }
-            if (newBlocks.size == matchedExistingNote.blocks.size) {
-                newBlocks.add(NoteBlock(type = BlockType.HEADING, content = "AI Update Notes", isBold = true))
-                newBlocks.add(NoteBlock(type = BlockType.TEXT, content = clean))
-            }
-
-            proposedNotes.add(
-                AiProposedNoteAction(
-                    actionType = "EDIT_NOTE",
-                    targetNoteId = matchedExistingNote.id,
-                    title = matchedExistingNote.title,
-                    summary = "Proposed update to \"${matchedExistingNote.title}\" (${newBlocks.size} blocks total)",
-                    colorId = matchedExistingNote.colorId,
-                    backgroundTheme = matchedExistingNote.backgroundTheme,
-                    isPinned = matchedExistingNote.isPinned,
-                    blocks = newBlocks
-                )
-            )
-            toolEvents.add(
-                AiToolEvent(
-                    toolName = "edit_note",
-                    summary = "Prepared edit for \"${matchedExistingNote.title}\" (awaiting your approval)"
-                )
-            )
-            return AiAgentTurnResponse(
-                replyText = "I've prepared the requested edits for **${matchedExistingNote.title}**. Review the updated blocks below and tap **Approve & Apply Edit** to update your note.",
-                updatedMemories = updatedMemories,
-                toolEvents = toolEvents,
-                proposedNotes = proposedNotes,
-                providerBadge = badge
-            )
-        }
-
-        // 3. Check if user is asking a general question vs drafting a note
-        val wantsDraft = lower.contains("draft") || lower.contains("create") || lower.contains("make a note") ||
-            lower.contains("summarize") || lower.contains("digest") || lower.contains("checklist") ||
-            lower.contains("grocery") || lower.contains("table") || lower.contains("plan") ||
-            lower.contains("template") || lower.contains("extract") || lower.contains("open task")
-
-        if (!wantsDraft && (lower.endsWith("?") || lower.startsWith("what") || lower.startsWith("how") || lower.startsWith("why") || lower.startsWith("who") || lower.startsWith("tell me"))) {
-            val memoryContext = if (updatedMemories.isNotEmpty()) {
-                "\n\n**Referenced from your Persistent Memory:**\n" +
-                    updatedMemories.joinToString("\n") { "• **${it.key}**: ${it.content}" }
-            } else ""
-            val notesSummary = "You currently have **${activeNotes.size} notes** on your canvas (${activeNotes.sumOf { it.totalTasksCount - it.completedTasksCount }} open tasks)."
-            return AiAgentTurnResponse(
-                replyText = "Here's what I found for **\"$clean\"**:\n\n$notesSummary$memoryContext\n\nYou can also ask me to **remember any fact** in persistent memory, **draft a new note** (with headings, text, tasks/checkpoints, bullets, 1 2 3 lists, code blocks, and tables), or **edit any existing note** on your canvas!",
-                updatedMemories = updatedMemories,
-                toolEvents = toolEvents,
-                proposedNotes = emptyList(),
-                providerBadge = badge
-            )
-        }
-
-        // 4. Draft a comprehensive rich note using tool calling (with memory reference if available)
-        val memoryBlockList = if (updatedMemories.isNotEmpty()) {
-            listOf(
-                NoteBlock(
-                    type = BlockType.QUOTE,
-                    content = "Memory Context: " + updatedMemories.take(2).joinToString(" | ") { "${it.key}: ${it.content}" },
-                    isItalic = true
-                )
-            )
-        } else emptyList()
-
-        val draftAction = when {
-            lower.contains("summarize") || lower.contains("digest") -> {
-                val summaryRows = mutableListOf(listOf("Note Title", "Blocks", "Open Tasks"))
-                activeNotes.take(6).forEach { n ->
-                    summaryRows.add(
-                        listOf(
-                            n.title.ifBlank { "Untitled" },
-                            n.blocks.size.toString(),
-                            (n.totalTasksCount - n.completedTasksCount).toString()
-                        )
-                    )
-                }
-                val blocks = mutableListOf<NoteBlock>().apply {
-                    add(NoteBlock(type = BlockType.HEADING, content = "Workspace Digest (${activeNotes.size} notes)", isBold = true))
-                    addAll(memoryBlockList)
-                    add(
-                        NoteBlock(
-                            type = BlockType.TABLE,
-                            content = summaryRows.joinToString("\n") { it.joinToString(" | ") },
-                            tableData = summaryRows
-                        )
-                    )
-                    activeNotes.take(5).forEachIndexed { idx, n ->
-                        add(NoteBlock(type = BlockType.NUMBERED, content = "${n.title.ifBlank { "Untitled" }} — ${n.completedTasksCount}/${n.totalTasksCount} tasks completed", order = idx))
-                    }
-                }
-                AiProposedNoteAction(
-                    actionType = "DRAFT_NOTE",
-                    title = "Canvas Summary & Digest",
-                    summary = "Synthesized ${activeNotes.size} notes with a structured comparison table and numbered breakdown.",
-                    colorId = "lavender",
-                    backgroundTheme = "notes",
-                    blocks = blocks
-                )
-            }
-
-            lower.contains("open task") || lower.contains("extract") -> {
-                val openTasks = activeNotes.flatMap { note ->
-                    note.blocks.filter { it.type == BlockType.TASK && !it.isChecked }.map { block ->
-                        val prefix = if (note.title.isNotBlank()) "[${note.title}] " else ""
-                        NoteBlock(type = BlockType.TASK, content = "$prefix${block.content.ifBlank { "Pending task" }}")
-                    }
-                }
-                val blocks = mutableListOf<NoteBlock>().apply {
-                    add(NoteBlock(type = BlockType.HEADING, content = "Master Priority Checkpoints", isBold = true))
-                    addAll(memoryBlockList)
-                    if (openTasks.isEmpty()) {
-                        add(NoteBlock(type = BlockType.TASK, content = "All caught up! Plan next sprint priorities"))
-                    } else {
-                        addAll(openTasks)
-                    }
-                }
-                AiProposedNoteAction(
-                    actionType = "DRAFT_NOTE",
-                    title = "Master Action Checklist",
-                    summary = "Extracted ${openTasks.size} unchecked tasks across your workspace.",
-                    colorId = "mint",
-                    backgroundTheme = "ruled",
-                    blocks = blocks
-                )
-            }
-
-            else -> {
-                val cleanTitle = clean
-                    .replace(Regex("(?i)^(draft|create|make|build)\\s+(a\\s+)?(new\\s+)?(note\\s+)?(about|for|on)?\\s*"), "")
-                    .trim()
-                    .take(40)
-                    .replaceFirstChar { it.uppercase() }
-                    .ifBlank { "Smart Canvas Draft" }
-
-                val tableRows = listOf(
-                    listOf("Phase / Topic", "Details", "Target"),
-                    listOf("1. Preparation", "Scope & requirements for $cleanTitle", "Day 1"),
-                    listOf("2. Execution", "Core implementation & verification", "Day 2")
-                )
-
-                val blocks = mutableListOf<NoteBlock>().apply {
-                    add(NoteBlock(type = BlockType.HEADING, content = "$cleanTitle — Overview", isBold = true))
-                    addAll(memoryBlockList)
-                    add(NoteBlock(type = BlockType.TEXT, content = "Structured note drafted with headings, checkpoints, bullets, numbered steps, table, and code snippet."))
-                    add(NoteBlock(type = BlockType.TASK, content = "Complete primary checkpoint for $cleanTitle", isBold = true))
-                    add(NoteBlock(type = BlockType.TASK, content = "Verify deliverables and review quality"))
-                    add(NoteBlock(type = BlockType.BULLET, content = "Key consideration and context note"))
-                    add(NoteBlock(type = BlockType.NUMBERED, content = "First sequential action step"))
-                    add(NoteBlock(type = BlockType.NUMBERED, content = "Second sequential action step"))
-                    add(
-                        NoteBlock(
-                            type = BlockType.TABLE,
-                            content = tableRows.joinToString("\n") { it.joinToString(" | ") },
-                            tableData = tableRows
-                        )
-                    )
-                    if (lower.contains("code") || lower.contains("script") || lower.contains("dev") || lower.contains("api")) {
-                        add(
-                            NoteBlock(
-                                type = BlockType.CODE,
-                                content = "// Snippet for $cleanTitle\nconst status = \"ready\";\nconsole.log(status);",
-                                isMonospace = true
-                            )
-                        )
-                    }
-                }
-                AiProposedNoteAction(
-                    actionType = "DRAFT_NOTE",
-                    title = cleanTitle,
-                    summary = "Drafted rich note with tasks, bullets, 1 2 3 list, table, and headings.",
-                    colorId = "sky",
-                    backgroundTheme = "doodles",
-                    blocks = blocks
-                )
-            }
-        }
-
-        proposedNotes.add(draftAction)
-        toolEvents.add(
-            AiToolEvent(
-                toolName = "draft_note",
-                summary = "Drafted note \"${draftAction.title}\" (awaiting your approval)"
-            )
-        )
-
-        return AiAgentTurnResponse(
-            replyText = "I've drafted **${draftAction.title}** for you${if (updatedMemories.isNotEmpty()) " (referencing your persistent memory)" else ""}. Review the preview card below and tap **Approve & Add to Notes** to save it to your canvas.",
-            updatedMemories = updatedMemories,
-            toolEvents = toolEvents,
-            proposedNotes = proposedNotes,
-            providerBadge = badge
-        )
     }
 
     private fun readStream(conn: HttpURLConnection, success: Boolean): String {

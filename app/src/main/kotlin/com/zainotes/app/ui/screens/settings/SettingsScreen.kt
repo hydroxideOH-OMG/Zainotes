@@ -11,10 +11,14 @@ import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -27,7 +31,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -41,7 +44,6 @@ import androidx.compose.material.icons.filled.DeleteForever
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Gavel
 import androidx.compose.material.icons.filled.GridView
-import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Key
 import androidx.compose.material.icons.filled.LightMode
 import androidx.compose.material.icons.filled.Memory
@@ -69,11 +71,9 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.SegmentedButton
-import androidx.compose.material3.SegmentedButtonDefaults
-import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
@@ -85,20 +85,27 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.scale
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInParent
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.zainotes.app.R
 import com.zainotes.app.data.ai.AiProvider
@@ -111,17 +118,27 @@ import com.zainotes.app.ui.theme.CardShapeExpressive
 import com.zainotes.app.ui.theme.ExpressiveMotion
 import com.zainotes.app.ui.theme.NoteColor
 import com.zainotes.app.ui.theme.ThemeMode
+import com.zainotes.app.ui.theme.expressivePressable
+import com.zainotes.app.ui.theme.staggeredEntrance
+import kotlinx.coroutines.delay
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SettingsScreen(
     viewModel: SettingsViewModel,
     onNavigateBack: () -> Unit,
+    focusApiKeyOnOpen: Boolean = false,
+    onApiKeyFocusConsumed: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val state by viewModel.uiState.collectAsState()
     val context = LocalContext.current
     val snackbarHostState = remember { SnackbarHostState() }
+    val scrollState = rememberScrollState()
+    val apiKeyFocusRequester = remember { FocusRequester() }
+
+    var apiKeyCardOffsetY by remember { mutableIntStateOf(0) }
+    var highlightApiKeyField by remember { mutableStateOf(false) }
 
     var showSizePicker by remember { mutableStateOf(false) }
     var showDefaultThemePicker by remember { mutableStateOf(false) }
@@ -148,6 +165,24 @@ fun SettingsScreen(
         state.backupMessage?.let {
             snackbarHostState.showSnackbar(it)
             viewModel.clearMessage()
+        }
+    }
+
+    // Deep-link handler: scroll directly to the AI API Key section and highlight + focus the input field
+    LaunchedEffect(focusApiKeyOnOpen, apiKeyCardOffsetY) {
+        if (focusApiKeyOnOpen && apiKeyCardOffsetY > 0) {
+            delay(120)
+            scrollState.animateScrollTo(
+                value = (apiKeyCardOffsetY - 36).coerceAtLeast(0),
+                animationSpec = ExpressiveMotion.spatialHeroSpec()
+            )
+            highlightApiKeyField = true
+            try {
+                apiKeyFocusRequester.requestFocus()
+            } catch (_: Exception) {}
+            onApiKeyFocusConsumed()
+            delay(2200)
+            highlightApiKeyField = false
         }
     }
 
@@ -185,7 +220,7 @@ fun SettingsScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(paddingValues)
-                .verticalScroll(rememberScrollState())
+                .verticalScroll(scrollState)
                 .padding(horizontal = 16.dp, vertical = 8.dp)
                 .padding(bottom = 110.dp)
                 .widthIn(max = 720.dp),
@@ -199,7 +234,9 @@ fun SettingsScreen(
                 colors = CardDefaults.cardColors(
                     containerColor = MaterialTheme.colorScheme.surfaceContainer
                 ),
-                modifier = Modifier.fillMaxWidth()
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .staggeredEntrance(index = 0)
             ) {
                 Column(modifier = Modifier.padding(16.dp)) {
                     Text(
@@ -284,12 +321,32 @@ fun SettingsScreen(
             // 1B. AI Providers, API Keys & Models
             SettingsSectionHeader(title = "AI Providers, API Keys & Models")
 
+            val apiCardHighlightScale by animateFloatAsState(
+                targetValue = if (highlightApiKeyField) 1.02f else 1.0f,
+                animationSpec = ExpressiveMotion.spatialMicroSpec(),
+                label = "apiCardHighlightScale"
+            )
+            val apiCardBorderWidth by animateDpAsState(
+                targetValue = if (highlightApiKeyField) 2.5.dp else 0.dp,
+                animationSpec = ExpressiveMotion.spatialFastSpec(),
+                label = "apiCardBorderWidth"
+            )
+
             Card(
                 shape = CardShapeExpressive,
                 colors = CardDefaults.cardColors(
                     containerColor = MaterialTheme.colorScheme.surfaceContainer
                 ),
-                modifier = Modifier.fillMaxWidth()
+                border = if (highlightApiKeyField) {
+                    BorderStroke(apiCardBorderWidth, MaterialTheme.colorScheme.primary)
+                } else null,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .onGloballyPositioned { coords ->
+                        apiKeyCardOffsetY = coords.positionInParent().y.toInt()
+                    }
+                    .scale(apiCardHighlightScale)
+                    .staggeredEntrance(index = 1)
             ) {
                 var apiKeyDraft by remember(state.aiProvider, state.activeApiKey) {
                     mutableStateOf(state.activeApiKey)
@@ -306,7 +363,7 @@ fun SettingsScreen(
                         fontWeight = FontWeight.Bold
                     )
                     Text(
-                        text = "Configure Google Gemini, ChatGPT (OpenAI), Anthropic Claude, OpenRouter, Groq, DeepSeek, Mistral, or any custom endpoint. Entering an API key fetches live models and prompts you to select or enter a custom model.",
+                        text = "Choose an AI provider, paste your API key, and fetch live models.",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.padding(top = 2.dp, bottom = 12.dp)
@@ -370,7 +427,11 @@ fun SettingsScreen(
                         singleLine = true,
                         visualTransformation = if (showApiKeyText) VisualTransformation.None else PasswordVisualTransformation(),
                         leadingIcon = {
-                            Icon(Icons.Default.Key, contentDescription = null)
+                            Icon(
+                                imageVector = Icons.Default.Key,
+                                contentDescription = null,
+                                tint = if (highlightApiKeyField) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                            )
                         },
                         trailingIcon = {
                             IconButton(onClick = { showApiKeyText = !showApiKeyText }) {
@@ -380,60 +441,84 @@ fun SettingsScreen(
                                 )
                             }
                         },
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = MaterialTheme.colorScheme.primary,
+                            unfocusedBorderColor = if (highlightApiKeyField) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline
+                        ),
                         shape = RoundedCornerShape(16.dp),
-                        modifier = Modifier.fillMaxWidth()
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .focusRequester(apiKeyFocusRequester)
                     )
 
                     Spacer(modifier = Modifier.height(10.dp))
 
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            text = if (state.activeApiKey.isNotBlank()) "API key saved for ${state.aiProvider.displayName}"
-                            else "No API key saved yet for ${state.aiProvider.displayName}",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = if (state.activeApiKey.isNotBlank()) MaterialTheme.colorScheme.primary
-                            else MaterialTheme.colorScheme.onSurfaceVariant
-                        )
+                    // Clean Stacked Status & Full-Width Action Button (Fixes vertical wrapping bug)
+                    Text(
+                        text = if (state.activeApiKey.isNotBlank()) {
+                            "✓ API key saved for ${state.aiProvider.displayName}"
+                        } else {
+                            "No API key saved yet for ${state.aiProvider.displayName}"
+                        },
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.Medium,
+                        color = if (state.activeApiKey.isNotBlank()) MaterialTheme.colorScheme.primary
+                        else MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(bottom = 10.dp)
+                    )
 
-                        FilledTonalButton(
-                            onClick = {
-                                viewModel.saveApiKeyAndFetchModels(
-                                    provider = state.aiProvider,
-                                    apiKey = apiKeyDraft,
-                                    customBaseUrl = customBaseUrlDraft
-                                )
-                            },
-                            enabled = !state.isFetchingModels
-                        ) {
-                            if (state.isFetchingModels) {
-                                CircularProgressIndicator(
-                                    modifier = Modifier.size(16.dp),
-                                    strokeWidth = 2.dp
-                                )
-                            } else {
-                                Icon(
-                                    imageVector = Icons.Default.Sync,
-                                    contentDescription = null,
-                                    modifier = Modifier.size(18.dp)
-                                )
-                            }
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text(if (state.isFetchingModels) "Fetching Models..." else "Save Key & Fetch Models")
+                    val saveBtnInteraction = remember { MutableInteractionSource() }
+                    FilledTonalButton(
+                        onClick = {
+                            viewModel.saveApiKeyAndFetchModels(
+                                provider = state.aiProvider,
+                                apiKey = apiKeyDraft,
+                                customBaseUrl = customBaseUrlDraft
+                            )
+                        },
+                        interactionSource = saveBtnInteraction,
+                        enabled = !state.isFetchingModels,
+                        shape = CircleShape,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(48.dp)
+                            .expressivePressable(saveBtnInteraction, pressedScale = 0.95f)
+                    ) {
+                        if (state.isFetchingModels) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(18.dp),
+                                strokeWidth = 2.dp
+                            )
+                        } else {
+                            Icon(
+                                imageVector = Icons.Default.Sync,
+                                contentDescription = null,
+                                modifier = Modifier.size(18.dp)
+                            )
                         }
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = if (state.isFetchingModels) "Fetching Models..." else "Save Key & Fetch Models",
+                            style = MaterialTheme.typography.labelLarge,
+                            fontWeight = FontWeight.Bold,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
                     }
 
                     HorizontalDivider(modifier = Modifier.padding(vertical = 12.dp))
 
                     // Active Model Selection Row
+                    val modelRowInteraction = remember { MutableInteractionSource() }
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
+                            .expressivePressable(modelRowInteraction, pressedScale = 0.96f)
                             .clip(RoundedCornerShape(16.dp))
-                            .clickable { viewModel.openModelSelectorPrompt() }
+                            .clickable(
+                                interactionSource = modelRowInteraction,
+                                indication = androidx.compose.foundation.LocalIndication.current
+                            ) { viewModel.openModelSelectorPrompt() }
                             .padding(vertical = 6.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
@@ -461,7 +546,9 @@ fun SettingsScreen(
                             Text(
                                 text = "${state.activeModelName} · ${state.availableModels.size} available",
                                 style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
                             )
                         }
                         Surface(
@@ -651,7 +738,9 @@ fun SettingsScreen(
                 colors = CardDefaults.cardColors(
                     containerColor = MaterialTheme.colorScheme.surfaceContainer
                 ),
-                modifier = Modifier.fillMaxWidth()
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .staggeredEntrance(index = 3)
             ) {
                 Column(modifier = Modifier.padding(16.dp)) {
                     Text(
@@ -663,38 +752,30 @@ fun SettingsScreen(
                         text = "Select how note cards are arranged on your home canvas",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(top = 2.dp, bottom = 10.dp)
+                        modifier = Modifier.padding(top = 2.dp, bottom = 12.dp)
                     )
 
-                    SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
-                        SegmentedButton(
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        ExpressiveGridDensityOption(
+                            label = "2-Column Grid",
+                            icon = Icons.Default.GridView,
                             selected = state.gridColumns == 2,
+                            isLeft = true,
                             onClick = { viewModel.setGridColumns(2) },
-                            shape = SegmentedButtonDefaults.itemShape(index = 0, count = 2),
-                            icon = {
-                                Icon(
-                                    imageVector = Icons.Default.GridView,
-                                    contentDescription = null,
-                                    modifier = Modifier.size(18.dp)
-                                )
-                            }
-                        ) {
-                            Text("2-Column Masonry")
-                        }
-                        SegmentedButton(
+                            modifier = Modifier.weight(1f)
+                        )
+                        ExpressiveGridDensityOption(
+                            label = "1-Column Feed",
+                            icon = Icons.Default.ViewAgenda,
                             selected = state.gridColumns == 1,
+                            isLeft = false,
                             onClick = { viewModel.setGridColumns(1) },
-                            shape = SegmentedButtonDefaults.itemShape(index = 1, count = 2),
-                            icon = {
-                                Icon(
-                                    imageVector = Icons.Default.ViewAgenda,
-                                    contentDescription = null,
-                                    modifier = Modifier.size(18.dp)
-                                )
-                            }
-                        ) {
-                            Text("1-Column Feed")
-                        }
+                            modifier = Modifier.weight(1f)
+                        )
                     }
 
                     HorizontalDivider(modifier = Modifier.padding(vertical = 12.dp))
@@ -1118,6 +1199,99 @@ private fun SettingsSectionHeader(title: String) {
 }
 
 @Composable
+private fun ExpressiveGridDensityOption(
+    label: String,
+    icon: ImageVector,
+    selected: Boolean,
+    isLeft: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val interactionSource = remember { MutableInteractionSource() }
+    val innerCorner by animateDpAsState(
+        targetValue = if (selected) 24.dp else 10.dp,
+        animationSpec = ExpressiveMotion.spatialFastSpec(),
+        label = "gridDensityInnerCorner"
+    )
+    val outerCorner = 24.dp
+
+    val shape = if (isLeft) {
+        RoundedCornerShape(
+            topStart = outerCorner,
+            bottomStart = outerCorner,
+            topEnd = innerCorner,
+            bottomEnd = innerCorner
+        )
+    } else {
+        RoundedCornerShape(
+            topStart = innerCorner,
+            bottomStart = innerCorner,
+            topEnd = outerCorner,
+            bottomEnd = outerCorner
+        )
+    }
+
+    val containerColor by animateColorAsState(
+        targetValue = if (selected) {
+            MaterialTheme.colorScheme.secondaryContainer
+        } else {
+            MaterialTheme.colorScheme.surfaceContainerHigh
+        },
+        animationSpec = ExpressiveMotion.snappySpec(),
+        label = "gridDensityBg"
+    )
+
+    val contentColor by animateColorAsState(
+        targetValue = if (selected) {
+            MaterialTheme.colorScheme.onSecondaryContainer
+        } else {
+            MaterialTheme.colorScheme.onSurfaceVariant
+        },
+        animationSpec = ExpressiveMotion.snappySpec(),
+        label = "gridDensityFg"
+    )
+
+    Surface(
+        onClick = onClick,
+        interactionSource = interactionSource,
+        shape = shape,
+        color = containerColor,
+        contentColor = contentColor,
+        border = if (selected) {
+            BorderStroke(1.5.dp, MaterialTheme.colorScheme.primary)
+        } else {
+            BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+        },
+        modifier = modifier
+            .height(48.dp)
+            .expressivePressable(interactionSource, pressedScale = 0.94f)
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(horizontal = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.Center
+        ) {
+            Icon(
+                imageVector = if (selected) Icons.Default.Check else icon,
+                contentDescription = null,
+                modifier = Modifier.size(18.dp)
+            )
+            Spacer(modifier = Modifier.width(8.dp))
+            Text(
+                text = label,
+                style = MaterialTheme.typography.labelLarge,
+                fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
+                maxLines = 1,
+                softWrap = false,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
+    }
+}
+
+@Composable
 private fun ExpressiveThemeModeCard(
     title: String,
     subtitle: String,
@@ -1126,6 +1300,12 @@ private fun ExpressiveThemeModeCard(
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val interactionSource = remember { MutableInteractionSource() }
+    val cornerRadius by animateDpAsState(
+        targetValue = if (selected) 24.dp else 16.dp,
+        animationSpec = ExpressiveMotion.spatialFastSpec(),
+        label = "themeCardCorner"
+    )
     val containerColor by animateColorAsState(
         targetValue = if (selected) {
             MaterialTheme.colorScheme.primaryContainer
@@ -1147,8 +1327,9 @@ private fun ExpressiveThemeModeCard(
 
     Surface(
         onClick = onClick,
-        modifier = modifier,
-        shape = RoundedCornerShape(if (selected) 20.dp else 16.dp),
+        interactionSource = interactionSource,
+        modifier = modifier.expressivePressable(interactionSource, pressedScale = 0.93f),
+        shape = RoundedCornerShape(cornerRadius),
         color = containerColor,
         border = if (selected) {
             BorderStroke(2.dp, MaterialTheme.colorScheme.primary)
@@ -1182,12 +1363,14 @@ private fun ExpressiveThemeModeCard(
                 text = title,
                 style = MaterialTheme.typography.labelLarge,
                 fontWeight = FontWeight.Bold,
-                color = contentColor
+                color = contentColor,
+                maxLines = 1
             )
             Text(
                 text = subtitle,
                 style = MaterialTheme.typography.labelSmall,
-                color = contentColor.copy(alpha = 0.75f)
+                color = contentColor.copy(alpha = 0.75f),
+                maxLines = 1
             )
         }
     }
@@ -1243,11 +1426,17 @@ private fun SettingsActionRow(
     titleColor: Color = MaterialTheme.colorScheme.onSurface,
     onClick: () -> Unit
 ) {
+    val interactionSource = remember { MutableInteractionSource() }
     Row(
         modifier = Modifier
             .fillMaxWidth()
+            .expressivePressable(interactionSource, pressedScale = 0.96f)
             .clip(MaterialTheme.shapes.medium)
-            .clickable(onClick = onClick)
+            .clickable(
+                interactionSource = interactionSource,
+                indication = androidx.compose.foundation.LocalIndication.current,
+                onClick = onClick
+            )
             .padding(vertical = 10.dp, horizontal = 4.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
