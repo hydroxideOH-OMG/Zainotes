@@ -175,7 +175,16 @@ data class AiChatMessage(
     val attachedImages: List<AiAttachedImage> = emptyList(),
     val toolEvents: List<AiToolEvent> = emptyList(),
     val proposedNotes: List<AiProposedNoteAction> = emptyList(),
-    val providerBadge: String = ""
+    val providerBadge: String = "",
+    val timestamp: Long = System.currentTimeMillis()
+)
+
+data class AiChatSession(
+    val id: String = UUID.randomUUID().toString(),
+    val title: String = "New Chat",
+    val createdAt: Long = System.currentTimeMillis(),
+    val updatedAt: Long = System.currentTimeMillis(),
+    val messages: List<AiChatMessage> = emptyList()
 )
 
 data class AiAgentTurnResponse(
@@ -189,6 +198,35 @@ data class AiAgentTurnResponse(
 object AiProviderClient {
     private val gson = Gson()
 
+    fun normalizeCustomBaseUrl(rawUrl: String, fallback: String = "https://api.openai.com/v1"): String {
+        var u = rawUrl.trim()
+        if (u.isBlank()) return fallback.trimEnd('/')
+        if (!u.startsWith("http://", ignoreCase = true) && !u.startsWith("https://", ignoreCase = true)) {
+            val isLocal = u.startsWith("localhost", ignoreCase = true) ||
+                u.startsWith("127.") ||
+                u.startsWith("10.") ||
+                u.startsWith("192.168.") ||
+                u.startsWith("0.0.0.0")
+            u = (if (isLocal) "http://" else "https://") + u
+        }
+        u = u.trimEnd('/')
+        if (u.endsWith("/chat/completions", ignoreCase = true)) {
+            u = u.substring(0, u.length - "/chat/completions".length).trimEnd('/')
+        } else if (u.endsWith("/models", ignoreCase = true)) {
+            u = u.substring(0, u.length - "/models".length).trimEnd('/')
+        }
+        return u
+    }
+
+    fun isLocalEndpoint(url: String): Boolean {
+        val lower = url.trim().lowercase()
+        return lower.contains("127.0.0.1") ||
+            lower.contains("localhost") ||
+            lower.contains("10.0.2.2") ||
+            lower.contains("192.168.") ||
+            lower.contains("0.0.0.0")
+    }
+
     /**
      * Fetches the available model names directly from the selected AI provider's API.
      */
@@ -198,7 +236,9 @@ object AiProviderClient {
         customBaseUrl: String = ""
     ): Result<List<String>> = withContext(Dispatchers.IO) {
         val cleanKey = apiKey.trim()
-        if (cleanKey.isBlank()) {
+        val resolvedCustomBase = normalizeCustomBaseUrl(customBaseUrl, provider.defaultBaseUrl)
+        val allowBlankKey = provider == AiProvider.CUSTOM && isLocalEndpoint(resolvedCustomBase)
+        if (cleanKey.isBlank() && !allowBlankKey) {
             return@withContext Result.failure(IllegalArgumentException("Please enter an API key first."))
         }
 
@@ -208,8 +248,8 @@ object AiProviderClient {
                     val endpoint = "https://generativelanguage.googleapis.com/v1beta/models?key=$cleanKey"
                     val conn = (URL(endpoint).openConnection() as HttpURLConnection).apply {
                         requestMethod = "GET"
-                        connectTimeout = 12000
-                        readTimeout = 12000
+                        connectTimeout = 25000
+                        readTimeout = 45000
                     }
                     val code = conn.responseCode
                     val body = readStream(conn, code in 200..299)
@@ -247,8 +287,8 @@ object AiProviderClient {
                         requestMethod = "GET"
                         setRequestProperty("x-api-key", cleanKey)
                         setRequestProperty("anthropic-version", "2023-06-01")
-                        connectTimeout = 12000
-                        readTimeout = 12000
+                        connectTimeout = 25000
+                        readTimeout = 45000
                     }
                     val code = conn.responseCode
                     val body = readStream(conn, code in 200..299)
@@ -262,18 +302,20 @@ object AiProviderClient {
                 }
 
                 else -> {
-                    val base = if (provider == AiProvider.CUSTOM && customBaseUrl.isNotBlank()) {
-                        customBaseUrl.trim().trimEnd('/')
+                    val base = if (provider == AiProvider.CUSTOM) {
+                        resolvedCustomBase
                     } else {
                         provider.defaultBaseUrl.trimEnd('/')
                     }
                     val endpoint = "$base/models"
                     val conn = (URL(endpoint).openConnection() as HttpURLConnection).apply {
                         requestMethod = "GET"
-                        setRequestProperty("Authorization", "Bearer $cleanKey")
+                        if (cleanKey.isNotBlank()) {
+                            setRequestProperty("Authorization", "Bearer $cleanKey")
+                        }
                         setRequestProperty("Accept", "application/json")
-                        connectTimeout = 12000
-                        readTimeout = 12000
+                        connectTimeout = 25000
+                        readTimeout = 45000
                     }
                     val code = conn.responseCode
                     val body = readStream(conn, code in 200..299)
@@ -281,8 +323,11 @@ object AiProviderClient {
                         return@withContext Result.failure(Exception("${provider.displayName} HTTP $code: ${extractErrorMsg(body)}"))
                     }
                     val root = JsonParser.parseString(body).asJsonObject
-                    val arr = root.getAsJsonArray("data") ?: JsonArray()
-                    val names = arr.mapNotNull { it.asJsonObject.get("id")?.asString }.distinct()
+                    val arr = root.getAsJsonArray("data") ?: root.getAsJsonArray("models") ?: JsonArray()
+                    val names = arr.mapNotNull {
+                        val obj = it.asJsonObject
+                        obj.get("id")?.asString ?: obj.get("name")?.asString?.removePrefix("models/")
+                    }.distinct()
                     Result.success(if (names.isNotEmpty()) names else provider.suggestedModels)
                 }
             }
@@ -293,7 +338,7 @@ object AiProviderClient {
 
     /**
      * Runs a live AI chat turn with Persistent Memory and Note Drafting/Editing tools.
-     * Offline fallback is removed: requires a valid API key configured in Settings.
+     * Offline fallback is removed: requires a valid API key configured in Settings (or local endpoint).
      */
     suspend fun runAgentChatTurn(
         provider: AiProvider,
@@ -309,8 +354,10 @@ object AiProviderClient {
     ): AiAgentTurnResponse = withContext(Dispatchers.IO) {
         val cleanKey = apiKey.trim()
         val chosenModel = modelName.ifBlank { provider.defaultModel }
+        val resolvedCustomBase = normalizeCustomBaseUrl(customBaseUrl, provider.defaultBaseUrl)
+        val allowBlankKey = provider == AiProvider.CUSTOM && isLocalEndpoint(resolvedCustomBase)
 
-        if (cleanKey.isBlank()) {
+        if (cleanKey.isBlank() && !allowBlankKey) {
             return@withContext AiAgentTurnResponse(
                 replyText = "API key is not set. Set an API key in the settings.",
                 updatedMemories = memories,
@@ -343,8 +390,8 @@ object AiProviderClient {
                 AiProvider.GEMINI -> callGeminiJsonAgent(cleanKey, chosenModel, systemInstruction, chatHistory, enrichedPrompt, attachedImages)
                 AiProvider.ANTHROPIC -> callAnthropicJsonAgent(cleanKey, chosenModel, systemInstruction, chatHistory, enrichedPrompt)
                 else -> {
-                    val base = if (provider == AiProvider.CUSTOM && customBaseUrl.isNotBlank()) {
-                        customBaseUrl.trim().trimEnd('/')
+                    val base = if (provider == AiProvider.CUSTOM) {
+                        resolvedCustomBase
                     } else {
                         provider.defaultBaseUrl.trimEnd('/')
                     }
@@ -381,20 +428,20 @@ object AiProviderClient {
         notes: List<Note>
     ): String {
         val memText = if (memories.isEmpty()) {
-            "No persistent memories saved yet."
+            "None."
         } else {
-            memories.joinToString("\n") { "- [id=${it.id}] ${it.key}: ${it.content}" }
+            memories.take(20).joinToString("\n") { "- [id=${it.id}] ${it.key}: ${it.content}" }
         }
 
         val notesText = if (notes.isEmpty()) {
-            "No notes on canvas yet."
+            "None."
         } else {
-            notes.take(25).joinToString("\n") { n ->
-                val blockPreview = n.blocks.joinToString("; ") { b ->
+            notes.take(15).joinToString("\n") { n ->
+                val blockPreview = n.blocks.take(8).joinToString("; ") { b ->
                     when (b.type) {
-                        BlockType.TASK -> "[${if (b.isChecked) "x" else " "}] ${b.content}"
-                        BlockType.TABLE -> "[TABLE: ${b.resolvedTable().joinToString(" / ") { r -> r.joinToString("|") }}]"
-                        else -> "(${b.type.name}) ${b.content}"
+                        BlockType.TASK -> "[${if (b.isChecked) "x" else " "}] ${b.content.take(80)}"
+                        BlockType.TABLE -> "[TABLE: ${b.resolvedTable().take(3).joinToString(" / ") { r -> r.joinToString("|") }}]"
+                        else -> "(${b.type.name}) ${b.content.take(80)}"
                     }
                 }
                 "- Note #${n.id} (title=\"${n.title}\", color=\"${n.colorId}\", theme=\"${n.backgroundTheme}\"): $blockPreview"
@@ -402,23 +449,15 @@ object AiProviderClient {
         }
 
         return """
-You are Zainotes Smart AI Assistant with Persistent Memory and Full Note Canvas Tool-Calling.
-You can answer any general question, manage persistent memory, draft new notes, and edit existing notes.
-
-CURRENT PERSISTENT MEMORY:
-$memText
-
-CURRENT WORKSPACE NOTES:
-$notesText
-
-Always respond with a single valid JSON object (no markdown fences around the JSON) matching this schema:
+You are Zainotes Smart AI Assistant with Persistent Memory and Note Canvas Tools.
+Respond ONLY with a valid JSON object (no markdown fences) matching this schema:
 {
-  "reply": "Your helpful, natural conversational response to the user.",
+  "reply": "Your helpful, natural conversational response.",
   "memory_actions": [
     {
       "action": "save" | "update" | "delete",
-      "key": "Memory topic or key",
-      "content": "Detailed information to remember"
+      "key": "Memory topic",
+      "content": "Details to remember"
     }
   ],
   "note_actions": [
@@ -426,7 +465,7 @@ Always respond with a single valid JSON object (no markdown fences around the JS
       "action": "draft_note" | "edit_note",
       "targetNoteId": 1,
       "title": "Note Title",
-      "summary": "Brief description of what was drafted or changed",
+      "summary": "Brief summary of changes",
       "colorId": "default" | "coral" | "peach" | "sand" | "mint" | "sage" | "fog" | "storm" | "dusk" | "blossom" | "clay" | "chalk" | "lavender" | "sky" | "amber" | "rose",
       "backgroundTheme": "none" | "groceries" | "food" | "music" | "recipes" | "notes" | "places" | "travel" | "video" | "celebration" | "dusk" | "storm" | "nature" | "doodles" | "ruled" | "grid" | "dots",
       "isPinned": false,
@@ -441,18 +480,18 @@ Always respond with a single valid JSON object (no markdown fences around the JS
           "isStrikethrough": false,
           "isHighlighted": false,
           "isMonospace": false,
-          "tableData": [["Header 1", "Header 2"], ["Row 1 Col 1", "Row 1 Col 2"]]
+          "tableData": [["Header 1", "Header 2"], ["Row 1", "Row 2"]]
         }
       ]
     }
   ]
 }
 
-Rules for Tool Actions:
-1. If the user shares personal preferences, facts, dates, goals, or asks you to remember/update/forget something, emit a `memory_actions` entry.
-2. When drafting or editing notes, reference relevant facts from CURRENT PERSISTENT MEMORY whenever helpful.
-3. For `draft_note` or `edit_note`, use rich blocks: HEADING, TEXT, TASK (checkboxes/checkpoints), BULLET (bulletins), NUMBERED (1 2 3 lists), QUOTE, CODE (code snippets), and TABLE (with 2D `tableData` rows and columns).
-4. When editing an existing note (`edit_note`), provide `targetNoteId` matching the existing Note ID and include the complete updated `blocks` list for that note.
+PERSISTENT MEMORY:
+$memText
+
+WORKSPACE NOTES:
+$notesText
 """.trimIndent()
     }
 
@@ -506,8 +545,8 @@ Rules for Tool Actions:
             requestMethod = "POST"
             doOutput = true
             setRequestProperty("Content-Type", "application/json")
-            connectTimeout = 20000
-            readTimeout = 25000
+            connectTimeout = 45000
+            readTimeout = 180000
         }
         OutputStreamWriter(conn.outputStream, Charsets.UTF_8).use { it.write(gson.toJson(payload)) }
         val code = conn.responseCode
@@ -516,12 +555,13 @@ Rules for Tool Actions:
             return Result.failure(Exception("Gemini HTTP $code: ${extractErrorMsg(body)}"))
         }
         val root = JsonParser.parseString(body).asJsonObject
-        val text = root.getAsJsonArray("candidates")
+        val parts = root.getAsJsonArray("candidates")
             ?.firstOrNull()?.asJsonObject
             ?.getAsJsonObject("content")
             ?.getAsJsonArray("parts")
-            ?.firstOrNull()?.asJsonObject
-            ?.get("text")?.asString
+        val text = parts
+            ?.mapNotNull { it.asJsonObject.get("text")?.asString }
+            ?.lastOrNull { it.isNotBlank() }
             ?: return Result.failure(Exception("Empty response from Gemini"))
         return Result.success(text)
     }
@@ -559,10 +599,11 @@ Rules for Tool Actions:
         val conn = (URL(endpoint).openConnection() as HttpURLConnection).apply {
             requestMethod = "POST"
             doOutput = true
-            setRequestProperty("Authorization", "Bearer $apiKey")
+            val effectiveKey = apiKey.ifBlank { "local-key" }
+            setRequestProperty("Authorization", "Bearer $effectiveKey")
             setRequestProperty("Content-Type", "application/json")
-            connectTimeout = 20000
-            readTimeout = 25000
+            connectTimeout = 45000
+            readTimeout = 180000
         }
         OutputStreamWriter(conn.outputStream, Charsets.UTF_8).use { it.write(gson.toJson(payload)) }
         val code = conn.responseCode
@@ -612,8 +653,8 @@ Rules for Tool Actions:
             setRequestProperty("x-api-key", apiKey)
             setRequestProperty("anthropic-version", "2023-06-01")
             setRequestProperty("Content-Type", "application/json")
-            connectTimeout = 20000
-            readTimeout = 25000
+            connectTimeout = 45000
+            readTimeout = 180000
         }
         OutputStreamWriter(conn.outputStream, Charsets.UTF_8).use { it.write(gson.toJson(payload)) }
         val code = conn.responseCode
@@ -635,11 +676,20 @@ Rules for Tool Actions:
         activeNotes: List<Note>,
         badge: String
     ): AiAgentTurnResponse {
-        val cleaned = rawText.trim()
+        // Strip <think>...</think> blocks emitted by reasoning models
+        val withoutThink = rawText.replace(Regex("<think>[\\s\\S]*?</think>", RegexOption.IGNORE_CASE), "").trim()
+        val fenceStripped = withoutThink
             .removePrefix("```json")
             .removePrefix("```")
             .removeSuffix("```")
             .trim()
+        val firstBrace = fenceStripped.indexOf('{')
+        val lastBrace = fenceStripped.lastIndexOf('}')
+        val cleaned = if (firstBrace >= 0 && lastBrace > firstBrace) {
+            fenceStripped.substring(firstBrace, lastBrace + 1)
+        } else {
+            fenceStripped
+        }
 
         val updatedMemories = currentMemories.toMutableList()
         val toolEvents = mutableListOf<AiToolEvent>()
@@ -647,7 +697,7 @@ Rules for Tool Actions:
 
         return try {
             val obj = JsonParser.parseString(cleaned).asJsonObject
-            val reply = obj.get("reply")?.asString ?: cleaned
+            val reply = obj.get("reply")?.asString ?: withoutThink
 
             obj.getAsJsonArray("memory_actions")?.forEach { el ->
                 val mObj = el.asJsonObject

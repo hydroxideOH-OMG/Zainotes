@@ -5,6 +5,7 @@
 
 package com.zainotes.app.ui.screens.aichat
 
+import android.text.format.DateUtils
 import android.util.Base64
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -15,12 +16,9 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
-import androidx.compose.animation.scaleIn
-import androidx.compose.animation.scaleOut
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -28,9 +26,12 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.ime
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
@@ -45,18 +46,20 @@ import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.AddComment
 import androidx.compose.material.icons.filled.AddTask
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.CheckBox
 import androidx.compose.material.icons.filled.CheckBoxOutlineBlank
+import androidx.compose.material.icons.filled.ChatBubbleOutline
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.DeleteOutline
-import androidx.compose.material.icons.filled.DeleteSweep
 import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.FiberManualRecord
+import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.Key
 import androidx.compose.material.icons.filled.Memory
@@ -64,7 +67,6 @@ import androidx.compose.material.icons.filled.Send
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.FilledTonalIconButton
@@ -90,22 +92,19 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.SpanStyle
-import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.zainotes.app.data.ai.AiAttachedImage
 import com.zainotes.app.data.ai.AiChatMessage
+import com.zainotes.app.data.ai.AiChatSession
 import com.zainotes.app.data.ai.AiMemoryItem
 import com.zainotes.app.data.ai.AiProposedNoteAction
 import com.zainotes.app.data.ai.AiProvider
@@ -117,10 +116,12 @@ import com.zainotes.app.data.model.getNumberedIndex
 import com.zainotes.app.data.preferences.AppSettingsSnapshot
 import com.zainotes.app.data.preferences.SettingsRepository
 import com.zainotes.app.data.repository.NotesRepository
-import com.zainotes.app.ui.theme.CardShapeExpressive
+import com.zainotes.app.ui.components.ExpressiveAiThinkingCard
+import com.zainotes.app.ui.components.ExpressiveMorphingIndicator
 import com.zainotes.app.ui.theme.ExpressiveMotion
 import com.zainotes.app.ui.theme.expressivePressable
 import com.zainotes.app.ui.theme.staggeredEntrance
+import java.util.UUID
 import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -144,6 +145,7 @@ fun AiChatScreen(
     var promptInput by remember { mutableStateOf("") }
     var isThinking by remember { mutableStateOf(false) }
     var showMemoryDialog by remember { mutableStateOf(false) }
+    var showHistoryDialog by remember { mutableStateOf(false) }
     var showMissingApiKeyDialog by remember { mutableStateOf(false) }
     var showModelSelectorDialog by remember { mutableStateOf(false) }
     var showAttachmentSheet by remember { mutableStateOf(false) }
@@ -152,7 +154,126 @@ fun AiChatScreen(
     val attachedImages = remember { mutableStateListOf<AiAttachedImage>() }
     val messages = remember { mutableStateListOf<AiChatMessage>() }
 
+    var currentSessionId by remember { mutableStateOf("") }
+    var hasInitializedSession by remember { mutableStateOf(false) }
+
     val memories = settings.aiMemories
+    val chatSessions = settings.aiChatSessions
+
+    // Load active session or most recent session when DataStore emits
+    LaunchedEffect(settings.aiChatSessions, settings.activeAiChatSessionId) {
+        if (!hasInitializedSession) {
+            val preferred = settings.aiChatSessions.find { it.id == settings.activeAiChatSessionId }
+                ?: settings.aiChatSessions.firstOrNull()
+            if (preferred != null) {
+                currentSessionId = preferred.id
+                messages.clear()
+                messages.addAll(preferred.messages)
+                hasInitializedSession = true
+            } else if (currentSessionId.isBlank()) {
+                currentSessionId = UUID.randomUUID().toString()
+            }
+        }
+    }
+
+    fun persistSessionState(updatedMessages: List<AiChatMessage>) {
+        if (settingsRepository == null) return
+        val sessionId = currentSessionId.ifBlank {
+            UUID.randomUUID().toString().also { currentSessionId = it }
+        }
+        val firstUserPrompt = updatedMessages.firstOrNull { it.role == "user" }?.text.orEmpty().trim()
+        val computedTitle = if (firstUserPrompt.isNotBlank()) {
+            if (firstUserPrompt.length > 42) firstUserPrompt.take(42).trimEnd() + "…" else firstUserPrompt
+        } else {
+            "New Chat"
+        }
+        val now = System.currentTimeMillis()
+        val existing = chatSessions.find { it.id == sessionId }
+        val updatedSession = AiChatSession(
+            id = sessionId,
+            title = computedTitle,
+            createdAt = existing?.createdAt ?: now,
+            updatedAt = now,
+            messages = updatedMessages.toList()
+        )
+        val nextSessions = listOf(updatedSession) + chatSessions.filterNot { it.id == sessionId }
+        coroutineScope.launch {
+            settingsRepository.setAiChatSessions(nextSessions.take(40), activeSessionId = sessionId)
+        }
+    }
+
+    fun startNewChatSession() {
+        if (isThinking) return
+        val newId = UUID.randomUUID().toString()
+        currentSessionId = newId
+        hasInitializedSession = true
+        messages.clear()
+        promptInput = ""
+        attachedNotes.clear()
+        attachedImages.clear()
+        if (settingsRepository != null) {
+            coroutineScope.launch {
+                settingsRepository.setActiveAiChatSessionId(newId)
+            }
+        }
+    }
+
+    fun switchToSession(session: AiChatSession) {
+        if (isThinking) return
+        currentSessionId = session.id
+        hasInitializedSession = true
+        messages.clear()
+        messages.addAll(session.messages)
+        promptInput = ""
+        attachedNotes.clear()
+        attachedImages.clear()
+        if (settingsRepository != null) {
+            coroutineScope.launch {
+                settingsRepository.setActiveAiChatSessionId(session.id)
+            }
+        }
+    }
+
+    fun deleteSession(sessionId: String) {
+        val remaining = chatSessions.filterNot { it.id == sessionId }
+        if (sessionId == currentSessionId) {
+            val nextActive = remaining.firstOrNull()
+            if (nextActive != null) {
+                currentSessionId = nextActive.id
+                messages.clear()
+                messages.addAll(nextActive.messages)
+            } else {
+                currentSessionId = UUID.randomUUID().toString()
+                messages.clear()
+            }
+        }
+        if (settingsRepository != null) {
+            coroutineScope.launch {
+                settingsRepository.setAiChatSessions(remaining, activeSessionId = currentSessionId)
+            }
+        }
+    }
+
+    // Track IME (soft keyboard) height so the composer bar rises smoothly above the keyboard
+    val density = LocalDensity.current
+    val imeBottomPx = WindowInsets.ime.getBottom(density)
+    val navBottomPx = WindowInsets.navigationBars.getBottom(density)
+    val isImeOpen = imeBottomPx > 0
+    val targetBottomPadding = with(density) {
+        if (isImeOpen) {
+            imeBottomPx.toDp() + 6.dp
+        } else {
+            navBottomPx.toDp() + 92.dp
+        }
+    }
+
+    // Automatically scroll to the bottom of the conversation when the soft keyboard opens
+    LaunchedEffect(isImeOpen, messages.size, isThinking) {
+        if (messages.isNotEmpty()) {
+            val targetIdx = if (isThinking) messages.size else messages.lastIndex
+            runCatching { listState.animateScrollToItem(targetIdx.coerceAtLeast(0)) }
+        }
+    }
 
     // System image picker for the '+' attachment menu
     val imagePickerLauncher = rememberLauncherForActivityResult(
@@ -188,10 +309,18 @@ fun AiChatScreen(
         val cleanPrompt = rawPrompt.trim()
         if ((cleanPrompt.isEmpty() && attachedNotes.isEmpty() && attachedImages.isEmpty()) || isThinking) return
 
-        // Enforce live API key check — never run an offline AI chat fallback
-        if (settings.activeApiKey.isBlank()) {
+        val isLocalCustom = settings.activeAiProvider == AiProvider.CUSTOM &&
+            AiProviderClient.isLocalEndpoint(settings.aiCustomBaseUrl)
+
+        // Enforce live API key check (unless using a local custom endpoint on 127.0.0.1 / localhost)
+        if (settings.activeApiKey.isBlank() && !isLocalCustom) {
             showMissingApiKeyDialog = true
             return
+        }
+
+        hasInitializedSession = true
+        if (currentSessionId.isBlank()) {
+            currentSessionId = UUID.randomUUID().toString()
         }
 
         val currentAttachedNotes = attachedNotes.toList()
@@ -208,15 +337,13 @@ fun AiChatScreen(
             attachedImages = currentAttachedImages
         )
         messages.add(userMsg)
+        persistSessionState(messages)
         promptInput = ""
         attachedNotes.clear()
         attachedImages.clear()
         isThinking = true
 
         coroutineScope.launch {
-            if (messages.isNotEmpty()) {
-                listState.animateScrollToItem(messages.lastIndex)
-            }
             val response = AiProviderClient.runAgentChatTurn(
                 provider = settings.activeAiProvider,
                 apiKey = settings.activeApiKey,
@@ -243,10 +370,8 @@ fun AiChatScreen(
                     providerBadge = response.providerBadge
                 )
             )
+            persistSessionState(messages)
             isThinking = false
-            if (messages.isNotEmpty()) {
-                listState.animateScrollToItem(messages.lastIndex)
-            }
         }
     }
 
@@ -266,16 +391,17 @@ fun AiChatScreen(
     Scaffold(
         modifier = modifier.fillMaxSize(),
         containerColor = MaterialTheme.colorScheme.background,
+        contentWindowInsets = WindowInsets(0, 0, 0, 0),
         topBar = {
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
                     .background(MaterialTheme.colorScheme.background)
                     .statusBarsPadding()
-                    .padding(horizontal = 20.dp, vertical = 10.dp),
-                verticalArrangement = Arrangement.spacedBy(10.dp)
+                    .padding(horizontal = 16.dp, vertical = 8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                // ── Top Bar Row: Left Active Model Selector & Right Memory Pill ──
+                // ── Top Bar Row: Left Active Model Selector & Right New Chat + History + Memory ──
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
@@ -294,51 +420,80 @@ fun AiChatScreen(
                     ) {
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp)
+                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 9.dp)
                         ) {
                             Icon(
                                 imageVector = Icons.Default.AutoAwesome,
                                 contentDescription = null,
                                 tint = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier.size(18.dp)
+                                modifier = Modifier.size(17.dp)
                             )
-                            Spacer(Modifier.width(8.dp))
+                            Spacer(Modifier.width(6.dp))
                             Text(
                                 text = activeModelDisplayName,
-                                style = MaterialTheme.typography.titleMedium,
+                                style = MaterialTheme.typography.titleSmall,
                                 fontWeight = FontWeight.ExtraBold,
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis,
                                 modifier = Modifier.weight(1f, fill = false)
                             )
-                            Spacer(Modifier.width(6.dp))
+                            Spacer(Modifier.width(4.dp))
                             Icon(
                                 imageVector = Icons.Default.ExpandMore,
                                 contentDescription = "Select AI model",
                                 tint = MaterialTheme.colorScheme.onSecondaryContainer,
-                                modifier = Modifier.size(20.dp)
+                                modifier = Modifier.size(18.dp)
                             )
                         }
                     }
 
-                    Spacer(Modifier.width(10.dp))
+                    Spacer(Modifier.width(8.dp))
 
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
-                        if (messages.isNotEmpty()) {
-                            FilledTonalIconButton(
-                                onClick = { messages.clear() },
-                                modifier = Modifier
-                                    .size(40.dp)
-                                    .expressivePressable(pressedScale = 0.9f)
+                        // New Chat Session Button
+                        FilledTonalIconButton(
+                            onClick = { startNewChatSession() },
+                            modifier = Modifier
+                                .size(38.dp)
+                                .expressivePressable(pressedScale = 0.9f)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.AddComment,
+                                contentDescription = "New Chat Session",
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
+
+                        // Chat History (Sessions) Button
+                        Surface(
+                            onClick = { showHistoryDialog = true },
+                            shape = CircleShape,
+                            color = MaterialTheme.colorScheme.surfaceContainerHighest,
+                            contentColor = MaterialTheme.colorScheme.onSurface,
+                            modifier = Modifier.expressivePressable(pressedScale = 0.93f)
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 9.dp)
                             ) {
                                 Icon(
-                                    imageVector = Icons.Default.DeleteSweep,
-                                    contentDescription = "Clear chat",
-                                    modifier = Modifier.size(20.dp)
+                                    imageVector = Icons.Default.History,
+                                    contentDescription = "Chat History",
+                                    tint = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.size(16.dp)
                                 )
+                                if (chatSessions.isNotEmpty()) {
+                                    Spacer(Modifier.width(4.dp))
+                                    Text(
+                                        text = "${chatSessions.size}",
+                                        style = MaterialTheme.typography.labelLarge,
+                                        fontWeight = FontWeight.Bold,
+                                        maxLines = 1
+                                    )
+                                }
                             }
                         }
 
@@ -352,14 +507,14 @@ fun AiChatScreen(
                         ) {
                             Row(
                                 verticalAlignment = Alignment.CenterVertically,
-                                modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp)
+                                modifier = Modifier.padding(horizontal = 13.dp, vertical = 9.dp)
                             ) {
                                 Icon(
                                     imageVector = Icons.Default.Memory,
                                     contentDescription = null,
-                                    modifier = Modifier.size(16.dp)
+                                    modifier = Modifier.size(15.dp)
                                 )
-                                Spacer(Modifier.width(6.dp))
+                                Spacer(Modifier.width(5.dp))
                                 Text(
                                     text = if (memories.isEmpty()) "Memory" else "Memory (${memories.size})",
                                     style = MaterialTheme.typography.labelLarge,
@@ -371,44 +526,50 @@ fun AiChatScreen(
                     }
                 }
 
-                // ── Concise One-Line Starter Options at the Top ──
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .horizontalScroll(rememberScrollState()),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                // ── Concise One-Line Starter Options at the Top (Hidden while keyboard is open & chatting to save vertical room) ──
+                AnimatedVisibility(
+                    visible = !isImeOpen || messages.isEmpty(),
+                    enter = expandVertically(ExpressiveMotion.spatialFastSpec()) + fadeIn(),
+                    exit = shrinkVertically(ExpressiveMotion.spatialFastSpec()) + fadeOut()
                 ) {
-                    starterChips.forEachIndexed { idx, (shortLabel, fullPrompt) ->
-                        Surface(
-                            onClick = { sendChatMessage(fullPrompt) },
-                            shape = RoundedCornerShape(16.dp),
-                            color = MaterialTheme.colorScheme.surfaceContainerHigh,
-                            contentColor = MaterialTheme.colorScheme.onSurface,
-                            border = androidx.compose.foundation.BorderStroke(
-                                1.dp,
-                                MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.55f)
-                            ),
-                            modifier = Modifier
-                                .staggeredEntrance(index = idx)
-                                .expressivePressable(pressedScale = 0.94f)
-                        ) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                modifier = Modifier.padding(horizontal = 14.dp, vertical = 9.dp)
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        starterChips.forEachIndexed { idx, (shortLabel, fullPrompt) ->
+                            Surface(
+                                onClick = { sendChatMessage(fullPrompt) },
+                                shape = RoundedCornerShape(16.dp),
+                                color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                                contentColor = MaterialTheme.colorScheme.onSurface,
+                                border = androidx.compose.foundation.BorderStroke(
+                                    1.dp,
+                                    MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.55f)
+                                ),
+                                modifier = Modifier
+                                    .staggeredEntrance(index = idx)
+                                    .expressivePressable(pressedScale = 0.94f)
                             ) {
-                                Icon(
-                                    imageVector = Icons.Default.AutoAwesome,
-                                    contentDescription = null,
-                                    tint = MaterialTheme.colorScheme.primary,
-                                    modifier = Modifier.size(15.dp)
-                                )
-                                Spacer(Modifier.width(6.dp))
-                                Text(
-                                    text = shortLabel,
-                                    style = MaterialTheme.typography.labelLarge,
-                                    fontWeight = FontWeight.SemiBold,
-                                    maxLines = 1
-                                )
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.AutoAwesome,
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.size(15.dp)
+                                    )
+                                    Spacer(Modifier.width(6.dp))
+                                    Text(
+                                        text = shortLabel,
+                                        style = MaterialTheme.typography.labelLarge,
+                                        fontWeight = FontWeight.SemiBold,
+                                        maxLines = 1
+                                    )
+                                }
                             }
                         }
                     }
@@ -420,7 +581,7 @@ fun AiChatScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(innerPadding)
-                .padding(bottom = 90.dp)
+                .padding(bottom = targetBottomPadding)
         ) {
             // ── Center Conversation Area ──
             Box(
@@ -433,7 +594,8 @@ fun AiChatScreen(
                     Column(
                         modifier = Modifier
                             .align(Alignment.Center)
-                            .padding(horizontal = 20.dp)
+                            .verticalScroll(rememberScrollState())
+                            .padding(horizontal = 20.dp, vertical = 8.dp)
                             .staggeredEntrance(index = 1),
                         horizontalAlignment = Alignment.CenterHorizontally
                     ) {
@@ -451,28 +613,28 @@ fun AiChatScreen(
                             Column(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .padding(24.dp),
+                                    .padding(if (isImeOpen) 16.dp else 24.dp),
                                 horizontalAlignment = Alignment.CenterHorizontally,
-                                verticalArrangement = Arrangement.spacedBy(10.dp)
+                                verticalArrangement = Arrangement.spacedBy(8.dp)
                             ) {
                                 Surface(
-                                    shape = RoundedCornerShape(20.dp),
+                                    shape = RoundedCornerShape(18.dp),
                                     color = MaterialTheme.colorScheme.primaryContainer,
                                     contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
-                                    modifier = Modifier.size(56.dp)
+                                    modifier = Modifier.size(if (isImeOpen) 44.dp else 56.dp)
                                 ) {
                                     Box(contentAlignment = Alignment.Center) {
                                         Icon(
                                             imageVector = Icons.Default.AutoAwesome,
                                             contentDescription = null,
-                                            modifier = Modifier.size(28.dp)
+                                            modifier = Modifier.size(if (isImeOpen) 22.dp else 28.dp)
                                         )
                                     }
                                 }
 
                                 Text(
                                     text = "Ask anything or draft notes",
-                                    style = MaterialTheme.typography.titleLarge,
+                                    style = if (isImeOpen) MaterialTheme.typography.titleMedium else MaterialTheme.typography.titleLarge,
                                     fontWeight = FontWeight.ExtraBold,
                                     color = MaterialTheme.colorScheme.onSurface
                                 )
@@ -490,7 +652,7 @@ fun AiChatScreen(
                     LazyColumn(
                         state = listState,
                         modifier = Modifier.fillMaxSize(),
-                        contentPadding = PaddingValues(horizontal = 20.dp, vertical = 12.dp),
+                        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 10.dp),
                         verticalArrangement = Arrangement.spacedBy(14.dp)
                     ) {
                         itemsIndexed(
@@ -662,6 +824,7 @@ fun AiChatScreen(
                                                                     val updatedList = msg.proposedNotes.toMutableList()
                                                                     updatedList[pIdx] = prop.copy(status = "APPROVED", savedNoteId = finalId)
                                                                     messages[msgIdx] = msg.copy(proposedNotes = updatedList)
+                                                                    persistSessionState(messages)
                                                                 }
                                                             }
                                                         },
@@ -669,6 +832,7 @@ fun AiChatScreen(
                                                             val updatedList = msg.proposedNotes.toMutableList()
                                                             updatedList[pIdx] = prop.copy(status = "DISCARDED")
                                                             messages[msgIdx] = msg.copy(proposedNotes = updatedList)
+                                                            persistSessionState(messages)
                                                         },
                                                         onOpenNote = onOpenNote
                                                     )
@@ -681,28 +845,20 @@ fun AiChatScreen(
                         }
 
                         if (isThinking) {
-                            item(key = "thinking_indicator") {
-                                Surface(
-                                    shape = CircleShape,
-                                    color = MaterialTheme.colorScheme.surfaceContainerHigh,
-                                    modifier = Modifier.padding(vertical = 4.dp)
+                            item(key = "m3_expressive_thinking_indicator") {
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .animateItem(
+                                            fadeInSpec = ExpressiveMotion.spatialFastSpec(),
+                                            placementSpec = ExpressiveMotion.spatialDefaultSpec(),
+                                            fadeOutSpec = ExpressiveMotion.spatialFastSpec()
+                                        ),
+                                    contentAlignment = Alignment.CenterStart
                                 ) {
-                                    Row(
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp)
-                                    ) {
-                                        CircularProgressIndicator(
-                                            modifier = Modifier.size(16.dp),
-                                            strokeWidth = 2.dp,
-                                            color = MaterialTheme.colorScheme.primary
-                                        )
-                                        Spacer(Modifier.width(10.dp))
-                                        Text(
-                                            text = "Thinking with $activeModelDisplayName...",
-                                            style = MaterialTheme.typography.labelLarge,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                                        )
-                                    }
+                                    ExpressiveAiThinkingCard(
+                                        modelDisplayName = activeModelDisplayName
+                                    )
                                 }
                             }
                         }
@@ -719,7 +875,7 @@ fun AiChatScreen(
                 label = "InputPillRadius"
             )
             val sendButtonScale by animateFloatAsState(
-                targetValue = if (canSend) 1f else 0.92f,
+                targetValue = if (canSend || isThinking) 1f else 0.92f,
                 animationSpec = ExpressiveMotion.spatialMicroSpec(),
                 label = "SendBtnScale"
             )
@@ -752,7 +908,7 @@ fun AiChatScreen(
                 ),
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 20.dp, vertical = 8.dp)
+                    .padding(horizontal = 16.dp, vertical = 6.dp)
             ) {
                 Column(
                     modifier = Modifier
@@ -900,7 +1056,7 @@ fun AiChatScreen(
 
                         Spacer(Modifier.width(10.dp))
 
-                        // Right Material 3 Expressive primary send button
+                        // Right Material 3 Expressive primary send button (morphs into M3 Expressive Loader while thinking)
                         Surface(
                             onClick = { sendChatMessage(promptInput) },
                             shape = CircleShape,
@@ -915,17 +1071,233 @@ fun AiChatScreen(
                                 .expressivePressable(pressedScale = 0.88f)
                         ) {
                             Box(contentAlignment = Alignment.Center) {
-                                Icon(
-                                    imageVector = Icons.Default.Send,
-                                    contentDescription = "Send prompt",
-                                    modifier = Modifier.size(20.dp)
-                                )
+                                if (isThinking) {
+                                    ExpressiveMorphingIndicator(
+                                        size = 24.dp,
+                                        color = MaterialTheme.colorScheme.primary
+                                    )
+                                } else {
+                                    Icon(
+                                        imageVector = Icons.Default.Send,
+                                        contentDescription = "Send prompt",
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                }
                             }
                         }
                     }
                 }
             }
         }
+    }
+
+    // ── Chat History (Multi-Session) Dialog ──
+    if (showHistoryDialog) {
+        AlertDialog(
+            onDismissRequest = { showHistoryDialog = false },
+            title = {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            imageVector = Icons.Default.History,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary
+                        )
+                        Spacer(Modifier.width(8.dp))
+                        Text(
+                            text = "Chat Sessions (${chatSessions.size})",
+                            style = MaterialTheme.typography.titleLarge,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                }
+            },
+            text = {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    // Start a New Chat Session CTA
+                    Surface(
+                        onClick = {
+                            startNewChatSession()
+                            showHistoryDialog = false
+                        },
+                        shape = RoundedCornerShape(18.dp),
+                        color = MaterialTheme.colorScheme.primaryContainer,
+                        contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .expressivePressable()
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.Center,
+                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.AddComment,
+                                contentDescription = null,
+                                modifier = Modifier.size(18.dp)
+                            )
+                            Spacer(Modifier.width(8.dp))
+                            Text(
+                                text = "Start New Chat Session",
+                                style = MaterialTheme.typography.titleSmall,
+                                fontWeight = FontWeight.ExtraBold
+                            )
+                        }
+                    }
+
+                    HorizontalDivider()
+
+                    if (chatSessions.isEmpty()) {
+                        Text(
+                            text = "No saved chat sessions yet. Send a message to automatically save your conversation history.",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(vertical = 12.dp)
+                        )
+                    } else {
+                        chatSessions.forEach { session ->
+                            val isCurrent = session.id == currentSessionId
+                            val lastMsgPreview = session.messages.lastOrNull()?.text.orEmpty()
+                            val relativeTime = DateUtils.getRelativeTimeSpanString(
+                                session.updatedAt,
+                                System.currentTimeMillis(),
+                                DateUtils.MINUTE_IN_MILLIS,
+                                DateUtils.FORMAT_ABBREV_RELATIVE
+                            ).toString()
+
+                            Surface(
+                                onClick = {
+                                    switchToSession(session)
+                                    showHistoryDialog = false
+                                },
+                                shape = RoundedCornerShape(18.dp),
+                                color = if (isCurrent) {
+                                    MaterialTheme.colorScheme.secondaryContainer
+                                } else {
+                                    MaterialTheme.colorScheme.surfaceContainerHigh
+                                },
+                                border = if (isCurrent) {
+                                    androidx.compose.foundation.BorderStroke(
+                                        1.5.dp,
+                                        MaterialTheme.colorScheme.primary
+                                    )
+                                } else null,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .expressivePressable()
+                            ) {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(14.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        modifier = Modifier.weight(1f)
+                                    ) {
+                                        Surface(
+                                            shape = RoundedCornerShape(12.dp),
+                                            color = if (isCurrent) {
+                                                MaterialTheme.colorScheme.primary
+                                            } else {
+                                                MaterialTheme.colorScheme.surfaceContainerHighest
+                                            },
+                                            modifier = Modifier.size(38.dp)
+                                        ) {
+                                            Box(contentAlignment = Alignment.Center) {
+                                                Icon(
+                                                    imageVector = Icons.Default.ChatBubbleOutline,
+                                                    contentDescription = null,
+                                                    tint = if (isCurrent) {
+                                                        MaterialTheme.colorScheme.onPrimary
+                                                    } else {
+                                                        MaterialTheme.colorScheme.primary
+                                                    },
+                                                    modifier = Modifier.size(18.dp)
+                                                )
+                                            }
+                                        }
+                                        Spacer(Modifier.width(12.dp))
+                                        Column(modifier = Modifier.weight(1f)) {
+                                            Row(
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                            ) {
+                                                Text(
+                                                    text = session.title.ifBlank { "New Chat" },
+                                                    style = MaterialTheme.typography.titleSmall,
+                                                    fontWeight = FontWeight.Bold,
+                                                    maxLines = 1,
+                                                    overflow = TextOverflow.Ellipsis,
+                                                    modifier = Modifier.weight(1f, fill = false)
+                                                )
+                                                if (isCurrent) {
+                                                    Surface(
+                                                        shape = CircleShape,
+                                                        color = MaterialTheme.colorScheme.primary
+                                                    ) {
+                                                        Text(
+                                                            text = "Active",
+                                                            style = MaterialTheme.typography.labelSmall,
+                                                            color = MaterialTheme.colorScheme.onPrimary,
+                                                            fontWeight = FontWeight.Bold,
+                                                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
+                                                        )
+                                                    }
+                                                }
+                                            }
+                                            if (lastMsgPreview.isNotBlank()) {
+                                                Text(
+                                                    text = lastMsgPreview,
+                                                    style = MaterialTheme.typography.bodySmall,
+                                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                    maxLines = 1,
+                                                    overflow = TextOverflow.Ellipsis
+                                                )
+                                            }
+                                            Text(
+                                                text = "${session.messages.size} messages · $relativeTime",
+                                                style = MaterialTheme.typography.labelSmall,
+                                                color = MaterialTheme.colorScheme.primary
+                                            )
+                                        }
+                                    }
+
+                                    IconButton(
+                                        onClick = { deleteSession(session.id) },
+                                        modifier = Modifier.size(34.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.DeleteOutline,
+                                            contentDescription = "Delete chat session",
+                                            tint = MaterialTheme.colorScheme.error,
+                                            modifier = Modifier.size(18.dp)
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showHistoryDialog = false }) {
+                    Text("Done", fontWeight = FontWeight.Bold)
+                }
+            }
+        )
     }
 
     // ── Missing API Key Dialog -> Deep-links directly to Settings API Key Input ──
@@ -1629,4 +2001,3 @@ private fun ProposedNoteApprovalCard(
         }
     }
 }
-
