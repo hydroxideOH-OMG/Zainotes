@@ -51,48 +51,133 @@ abstract class ZainotesDatabase : RoomDatabase() {
                 .addCallback(object : Callback() {
                     override fun onCreate(db: SupportSQLiteDatabase) {
                         super.onCreate(db)
-                        // Seed welcome note on first install
+                        // Seed expressive sample notes on first install to match preview 1:1
                         CoroutineScope(Dispatchers.IO).launch {
-                            val welcomeNote = Note(
-                                title = "Welcome to Zainotes",
-                                colorId = "lavender",
-                                backgroundTheme = "dusk",
-                                cardSize = CardSize.WIDE,
-                                isPinned = true,
-                                blocks = listOf(
-                                    NoteBlock(
-                                        type = BlockType.HEADING,
-                                        content = "Expressive Notes & Tasks"
-                                    ),
-                                    NoteBlock(
-                                        type = BlockType.TEXT,
-                                        content = "Zainotes is a native Android notes app built with Material 3 Expressive. It blends freeform notes, interactive task checklists, and bulletins into an adaptable canvas."
-                                    ),
-                                    NoteBlock(
-                                        type = BlockType.TASK,
-                                        content = "Tap this checkbox to complete a task",
-                                        isChecked = true
-                                    ),
-                                    NoteBlock(
-                                        type = BlockType.TASK,
-                                        content = "Check out the resizable card sizes on the home screen",
-                                        isChecked = false
-                                    ),
-                                    NoteBlock(
-                                        type = BlockType.BULLET,
-                                        content = "Quick bulletins for thought dumping"
-                                    ),
-                                    NoteBlock(
-                                        type = BlockType.BULLET,
-                                        content = "Pure AMOLED Black theme for battery saving"
-                                    ),
-                                    NoteBlock(
-                                        type = BlockType.TEXT,
-                                        content = "Enjoy complete offline privacy and open-source freedom under AGPLv3."
+                            val now = System.currentTimeMillis()
+                            val sampleNotes = listOf(
+                                Note(
+                                    title = "Welcome to Zainotes",
+                                    colorId = "lavender",
+                                    backgroundTheme = "dusk",
+                                    cardSize = CardSize.WIDE,
+                                    isPinned = true,
+                                    createdAt = now,
+                                    updatedAt = now,
+                                    blocks = listOf(
+                                        NoteBlock(
+                                            type = BlockType.HEADING,
+                                            content = "Expressive Notes & Tasks",
+                                            isBold = true
+                                        ),
+                                        NoteBlock(
+                                            type = BlockType.TEXT,
+                                            content = "Zainotes is a native Android notes app built with Material 3 Expressive and Google Sans Flex typography."
+                                        ),
+                                        NoteBlock(
+                                            type = BlockType.TASK,
+                                            content = "Tap this checkbox to complete a task",
+                                            isChecked = true
+                                        ),
+                                        NoteBlock(
+                                            type = BlockType.TASK,
+                                            content = "Try the dual-tier floating formatting bar in the note editor",
+                                            isChecked = false,
+                                            isBold = true,
+                                            isHighlighted = true
+                                        )
+                                    )
+                                ),
+                                Note(
+                                    title = "Weekend Farmers Market",
+                                    colorId = "mint",
+                                    backgroundTheme = "groceries",
+                                    cardSize = CardSize.FREEFORM,
+                                    isPinned = true,
+                                    createdAt = now - 720_000L,
+                                    updatedAt = now - 720_000L,
+                                    blocks = listOf(
+                                        NoteBlock(
+                                            type = BlockType.TASK,
+                                            content = "Organic sourdough boule",
+                                            isChecked = true
+                                        ),
+                                        NoteBlock(
+                                            type = BlockType.TASK,
+                                            content = "Honeycrisp apples & figs",
+                                            isChecked = false,
+                                            isBold = true
+                                        ),
+                                        NoteBlock(
+                                            type = BlockType.TASK,
+                                            content = "Cold brew oat concentrate",
+                                            isChecked = false
+                                        )
+                                    )
+                                ),
+                                Note(
+                                    title = "Late Night Synthwave Session",
+                                    colorId = "cobalt",
+                                    backgroundTheme = "music",
+                                    cardSize = CardSize.FREEFORM,
+                                    isPinned = false,
+                                    createdAt = now - 3_600_000L,
+                                    updatedAt = now - 3_600_000L,
+                                    blocks = listOf(
+                                        NoteBlock(
+                                            type = BlockType.QUOTE,
+                                            content = "Warm analog arpeggios at 108 BPM with tape chorus.",
+                                            isItalic = true
+                                        ),
+                                        NoteBlock(
+                                            type = BlockType.TEXT,
+                                            content = "Patch 04: Juno-60 brass pad + gated reverb snare",
+                                            isMonospace = true
+                                        )
+                                    )
+                                ),
+                                Note(
+                                    title = "Kyoto Autumn Itinerary",
+                                    colorId = "peach",
+                                    backgroundTheme = "places",
+                                    cardSize = CardSize.FREEFORM,
+                                    isPinned = false,
+                                    createdAt = now - 10_800_000L,
+                                    updatedAt = now - 10_800_000L,
+                                    blocks = listOf(
+                                        NoteBlock(
+                                            type = BlockType.TASK,
+                                            content = "Arashiyama bamboo grove at sunrise",
+                                            isChecked = true
+                                        ),
+                                        NoteBlock(
+                                            type = BlockType.TASK,
+                                            content = "Matcha parfaits in Uji",
+                                            isChecked = false,
+                                            isUnderline = true
+                                        )
+                                    )
+                                ),
+                                Note(
+                                    title = "Botanical Greenhouse Notes",
+                                    colorId = "sage",
+                                    backgroundTheme = "nature",
+                                    cardSize = CardSize.FREEFORM,
+                                    isPinned = false,
+                                    createdAt = now - 86_400_000L,
+                                    updatedAt = now - 86_400_000L,
+                                    blocks = listOf(
+                                        NoteBlock(
+                                            type = BlockType.BULLET,
+                                            content = "Monstera Thai Constellation misting schedule"
+                                        ),
+                                        NoteBlock(
+                                            type = BlockType.BULLET,
+                                            content = "Repot variegated philodendron in bark mix"
+                                        )
                                     )
                                 )
                             )
-                            INSTANCE?.noteDao()?.insertNote(welcomeNote)
+                            INSTANCE?.noteDao()?.insertNotes(sampleNotes)
                         }
                     }
                 })

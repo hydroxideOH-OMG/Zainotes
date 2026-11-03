@@ -19,7 +19,7 @@ data class Note(
     val title: String = "",
     val colorId: String = "default",
     val backgroundTheme: String = "none",
-    val cardSize: CardSize = CardSize.STANDARD,
+    val cardSize: CardSize = CardSize.FREEFORM,
     val isPinned: Boolean = false,
     val isArchived: Boolean = false,
     val blocks: List<NoteBlock> = emptyList(),

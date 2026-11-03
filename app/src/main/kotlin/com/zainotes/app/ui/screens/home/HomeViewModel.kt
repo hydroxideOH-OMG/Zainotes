@@ -22,9 +22,13 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
 enum class HomeFilter {
-    ALL,
-    TASKS,
-    PINNED
+    ALL
+}
+
+enum class HomeSortOrder(val label: String) {
+    RECENTLY_EDITED("Recently edited"),
+    TITLE_AZ("Title (A–Z)"),
+    OLDEST_FIRST("Oldest first")
 }
 
 data class HomeUiState(
@@ -34,9 +38,10 @@ data class HomeUiState(
     val pinnedCount: Int = 0,
     val openTasksTotal: Int = 0,
     val activeFilter: HomeFilter = HomeFilter.ALL,
+    val sortOrder: HomeSortOrder = HomeSortOrder.RECENTLY_EDITED,
     val searchQuery: String = "",
     val isSearchActive: Boolean = false,
-    val isFreeformGrid: Boolean = false,
+    val isFreeformGrid: Boolean = true,
     val isLoading: Boolean = false
 )
 
@@ -45,48 +50,55 @@ class HomeViewModel(
 ) : ViewModel() {
 
     private val _activeFilter = MutableStateFlow(HomeFilter.ALL)
+    private val _sortOrder = MutableStateFlow(HomeSortOrder.RECENTLY_EDITED)
     private val _searchQuery = MutableStateFlow("")
     private val _isSearchActive = MutableStateFlow(false)
-    private val _isFreeformGrid = MutableStateFlow(false)
 
     val uiState: StateFlow<HomeUiState> = combine(
         repository.activeNotes,
         _activeFilter,
+        _sortOrder,
         _searchQuery,
-        _isSearchActive,
-        _isFreeformGrid
-    ) { notes, filter, query, searchActive, freeform ->
+        _isSearchActive
+    ) { notes, filter, sortOrder, query, searchActive ->
         val total = notes.size
         val tasks = notes.count { it.totalTasksCount > 0 }
         val pinned = notes.count { it.isPinned }
         val openTasks = notes.sumOf { it.totalTasksCount - it.completedTasksCount }
 
-        val byCategory = when (filter) {
-            HomeFilter.ALL -> notes
-            HomeFilter.TASKS -> notes.filter { it.totalTasksCount > 0 }
-            HomeFilter.PINNED -> notes.filter { it.isPinned }
-        }
-
         val trimmedQuery = query.trim()
-        val filtered = if (trimmedQuery.isEmpty()) {
-            byCategory
+        val searched = if (trimmedQuery.isEmpty()) {
+            notes
         } else {
-            byCategory.filter { note ->
+            notes.filter { note ->
                 note.title.contains(trimmedQuery, ignoreCase = true) ||
                     note.blocks.any { it.content.contains(trimmedQuery, ignoreCase = true) }
             }
         }
 
+        val sorted = when (sortOrder) {
+            HomeSortOrder.RECENTLY_EDITED -> searched.sortedWith(
+                compareByDescending<Note> { it.isPinned }.thenByDescending { it.updatedAt }
+            )
+            HomeSortOrder.TITLE_AZ -> searched.sortedWith(
+                compareByDescending<Note> { it.isPinned }.thenBy { it.title.lowercase() }
+            )
+            HomeSortOrder.OLDEST_FIRST -> searched.sortedWith(
+                compareByDescending<Note> { it.isPinned }.thenBy { it.createdAt }
+            )
+        }
+
         HomeUiState(
-            notes = filtered,
+            notes = sorted,
             totalCount = total,
             tasksCount = tasks,
             pinnedCount = pinned,
             openTasksTotal = openTasks,
             activeFilter = filter,
+            sortOrder = sortOrder,
             searchQuery = query,
             isSearchActive = searchActive,
-            isFreeformGrid = freeform,
+            isFreeformGrid = true,
             isLoading = false
         )
     }.stateIn(
@@ -99,6 +111,10 @@ class HomeViewModel(
         _activeFilter.value = filter
     }
 
+    fun onSortOrderChanged(sortOrder: HomeSortOrder) {
+        _sortOrder.value = sortOrder
+    }
+
     fun onSearchQueryChanged(query: String) {
         _searchQuery.value = query
     }
@@ -109,10 +125,6 @@ class HomeViewModel(
         if (!next) {
             _searchQuery.value = ""
         }
-    }
-
-    fun toggleFreeformGrid() {
-        _isFreeformGrid.value = !_isFreeformGrid.value
     }
 
     fun toggleTaskChecked(noteId: Long, blockId: String, isChecked: Boolean) {

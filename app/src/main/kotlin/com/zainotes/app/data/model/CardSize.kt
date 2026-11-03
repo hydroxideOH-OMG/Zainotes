@@ -18,7 +18,7 @@ enum class CardSize(val label: String, val spanColumns: Int) {
 
     companion object {
         fun fromName(name: String?): CardSize {
-            return entries.find { it.name.equals(name, ignoreCase = true) } ?: STANDARD
+            return entries.find { it.name.equals(name, ignoreCase = true) } ?: FREEFORM
         }
     }
 }

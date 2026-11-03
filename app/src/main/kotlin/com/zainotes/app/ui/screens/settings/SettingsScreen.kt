@@ -27,6 +27,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -41,24 +42,34 @@ import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Gavel
 import androidx.compose.material.icons.filled.GridView
 import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.Key
 import androidx.compose.material.icons.filled.LightMode
+import androidx.compose.material.icons.filled.Memory
 import androidx.compose.material.icons.filled.NightlightRound
 import androidx.compose.material.icons.filled.OpenInNew
 import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.RestartAlt
 import androidx.compose.material.icons.filled.Security
+import androidx.compose.material.icons.filled.Sync
 import androidx.compose.material.icons.filled.Upload
 import androidx.compose.material.icons.filled.ViewAgenda
 import androidx.compose.material.icons.filled.ViewCarousel
+import androidx.compose.material.icons.filled.Visibility
+import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilledTonalButton
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SegmentedButton
 import androidx.compose.material3.SegmentedButtonDefaults
@@ -86,8 +97,11 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import com.zainotes.app.R
+import com.zainotes.app.data.ai.AiProvider
 import com.zainotes.app.data.model.NoteBackgroundTheme
 import com.zainotes.app.ui.components.CardSizePickerSheet
 import com.zainotes.app.ui.components.ExpressiveSwitch
@@ -264,6 +278,205 @@ fun SettingsScreen(
                         checked = state.showCardBackgrounds,
                         onCheckedChange = { viewModel.setShowCardBackgrounds(it) }
                     )
+                }
+            }
+
+            // 1B. AI Providers, API Keys & Models
+            SettingsSectionHeader(title = "AI Providers, API Keys & Models")
+
+            Card(
+                shape = CardShapeExpressive,
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.surfaceContainer
+                ),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                var apiKeyDraft by remember(state.aiProvider, state.activeApiKey) {
+                    mutableStateOf(state.activeApiKey)
+                }
+                var customBaseUrlDraft by remember(state.aiCustomBaseUrl) {
+                    mutableStateOf(state.aiCustomBaseUrl)
+                }
+                var showApiKeyText by remember { mutableStateOf(false) }
+
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Text(
+                        text = "Multi-Provider AI Engine",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Text(
+                        text = "Configure Google Gemini, ChatGPT (OpenAI), Anthropic Claude, OpenRouter, Groq, DeepSeek, Mistral, or any custom endpoint. Entering an API key fetches live models and prompts you to select or enter a custom model.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(top = 2.dp, bottom = 12.dp)
+                    )
+
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        AiProvider.entries.forEach { provider ->
+                            val selected = state.aiProvider == provider
+                            FilterChip(
+                                selected = selected,
+                                onClick = { viewModel.setAiProvider(provider) },
+                                label = {
+                                    Text(
+                                        text = provider.displayName,
+                                        fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium
+                                    )
+                                },
+                                leadingIcon = if (selected) {
+                                    {
+                                        Icon(
+                                            imageVector = Icons.Default.Check,
+                                            contentDescription = null,
+                                            modifier = Modifier.size(16.dp)
+                                        )
+                                    }
+                                } else null,
+                                shape = CircleShape
+                            )
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(10.dp))
+
+                    if (state.aiProvider == AiProvider.CUSTOM) {
+                        OutlinedTextField(
+                            value = customBaseUrlDraft,
+                            onValueChange = {
+                                customBaseUrlDraft = it
+                                viewModel.setAiCustomBaseUrl(it)
+                            },
+                            label = { Text("Custom OpenAI-Compatible Base URL") },
+                            placeholder = { Text("https://api.openai.com/v1") },
+                            singleLine = true,
+                            shape = RoundedCornerShape(16.dp),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(bottom = 10.dp)
+                        )
+                    }
+
+                    OutlinedTextField(
+                        value = apiKeyDraft,
+                        onValueChange = { apiKeyDraft = it },
+                        label = { Text("${state.aiProvider.displayName} API Key") },
+                        placeholder = { Text("Paste your ${state.aiProvider.displayName} API key...") },
+                        singleLine = true,
+                        visualTransformation = if (showApiKeyText) VisualTransformation.None else PasswordVisualTransformation(),
+                        leadingIcon = {
+                            Icon(Icons.Default.Key, contentDescription = null)
+                        },
+                        trailingIcon = {
+                            IconButton(onClick = { showApiKeyText = !showApiKeyText }) {
+                                Icon(
+                                    imageVector = if (showApiKeyText) Icons.Default.VisibilityOff else Icons.Default.Visibility,
+                                    contentDescription = if (showApiKeyText) "Hide API Key" else "Show API Key"
+                                )
+                            }
+                        },
+                        shape = RoundedCornerShape(16.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    )
+
+                    Spacer(modifier = Modifier.height(10.dp))
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = if (state.activeApiKey.isNotBlank()) "API key saved for ${state.aiProvider.displayName}"
+                            else "No API key saved yet for ${state.aiProvider.displayName}",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = if (state.activeApiKey.isNotBlank()) MaterialTheme.colorScheme.primary
+                            else MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+
+                        FilledTonalButton(
+                            onClick = {
+                                viewModel.saveApiKeyAndFetchModels(
+                                    provider = state.aiProvider,
+                                    apiKey = apiKeyDraft,
+                                    customBaseUrl = customBaseUrlDraft
+                                )
+                            },
+                            enabled = !state.isFetchingModels
+                        ) {
+                            if (state.isFetchingModels) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(16.dp),
+                                    strokeWidth = 2.dp
+                                )
+                            } else {
+                                Icon(
+                                    imageVector = Icons.Default.Sync,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                            }
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(if (state.isFetchingModels) "Fetching Models..." else "Save Key & Fetch Models")
+                        }
+                    }
+
+                    HorizontalDivider(modifier = Modifier.padding(vertical = 12.dp))
+
+                    // Active Model Selection Row
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(16.dp))
+                            .clickable { viewModel.openModelSelectorPrompt() }
+                            .padding(vertical = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Surface(
+                            shape = RoundedCornerShape(14.dp),
+                            color = MaterialTheme.colorScheme.primaryContainer,
+                            modifier = Modifier.size(46.dp)
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Icon(
+                                    imageVector = Icons.Default.Memory,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                                    modifier = Modifier.size(22.dp)
+                                )
+                            }
+                        }
+                        Spacer(modifier = Modifier.width(14.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = "Selected AI Model",
+                                style = MaterialTheme.typography.bodyLarge,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                            Text(
+                                text = "${state.activeModelName} · ${state.availableModels.size} available",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        Surface(
+                            shape = CircleShape,
+                            color = MaterialTheme.colorScheme.secondaryContainer
+                        ) {
+                            Text(
+                                text = "Select / Custom",
+                                style = MaterialTheme.typography.labelMedium,
+                                color = MaterialTheme.colorScheme.onSecondaryContainer,
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
+                            )
+                        }
+                    }
                 }
             }
 
@@ -797,6 +1010,95 @@ fun SettingsScreen(
             },
             dismissButton = {
                 TextButton(onClick = { showClearConfirmation = false }) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
+
+    if (state.promptModelSelector) {
+        var customModelDraft by remember(state.activeModelName) {
+            mutableStateOf(state.activeModelName)
+        }
+        AlertDialog(
+            onDismissRequest = { viewModel.dismissModelSelectorPrompt() },
+            title = {
+                Text(
+                    text = "Select ${state.aiProvider.displayName} Model",
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Bold
+                )
+            },
+            text = {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Text(
+                        text = "Choose a model fetched from the API or enter any custom model ID below:",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+
+                    OutlinedTextField(
+                        value = customModelDraft,
+                        onValueChange = { customModelDraft = it },
+                        label = { Text("Custom or Selected Model Name") },
+                        placeholder = { Text(state.aiProvider.defaultModel) },
+                        singleLine = true,
+                        shape = RoundedCornerShape(14.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    )
+
+                    Spacer(modifier = Modifier.height(4.dp))
+
+                    Text(
+                        text = "Fetched / Available Models (${state.availableModels.size})",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.primary,
+                        fontWeight = FontWeight.Bold
+                    )
+
+                    state.availableModels.forEach { modelId ->
+                        val isSelected = customModelDraft.trim() == modelId
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(12.dp))
+                                .clickable { customModelDraft = modelId }
+                                .padding(vertical = 4.dp, horizontal = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            RadioButton(
+                                selected = isSelected,
+                                onClick = { customModelDraft = modelId }
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = modelId,
+                                style = MaterialTheme.typography.bodyMedium,
+                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
+                            )
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                FilledTonalButton(
+                    onClick = {
+                        viewModel.selectAiModel(
+                            provider = state.aiProvider,
+                            modelName = customModelDraft.ifBlank { state.aiProvider.defaultModel }
+                        )
+                    }
+                ) {
+                    Text("Use Model", fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { viewModel.dismissModelSelectorPrompt() }) {
                     Text("Cancel")
                 }
             }

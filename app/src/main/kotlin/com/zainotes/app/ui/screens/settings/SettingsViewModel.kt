@@ -12,6 +12,8 @@ package com.zainotes.app.ui.screens.settings
 import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.zainotes.app.data.ai.AiProvider
+import com.zainotes.app.data.ai.AiProviderClient
 import com.zainotes.app.data.backup.BackupManager
 import com.zainotes.app.data.model.CardSize
 import com.zainotes.app.data.preferences.SettingsRepository
@@ -29,7 +31,7 @@ data class SettingsUiState(
     val dynamicColor: Boolean = true,
     val amoledPureBlackCards: Boolean = false,
     val showCardBackgrounds: Boolean = true,
-    val defaultCardSize: CardSize = CardSize.STANDARD,
+    val defaultCardSize: CardSize = CardSize.FREEFORM,
     val defaultNoteColor: String = "default",
     val defaultBackgroundTheme: String = "none",
     val gridColumns: Int = 2,
@@ -40,10 +42,24 @@ data class SettingsUiState(
     val strikethroughCompleted: Boolean = true,
     val moveCheckedToBottom: Boolean = false,
     val autoFocusNewNote: Boolean = true,
+    val aiProvider: AiProvider = AiProvider.GEMINI,
+    val activeApiKey: String = "",
+    val activeModelName: String = AiProvider.GEMINI.defaultModel,
+    val availableModels: List<String> = AiProvider.GEMINI.suggestedModels,
+    val aiCustomBaseUrl: String = "https://api.openai.com/v1",
+    val aiMemoriesCount: Int = 0,
+    val isFetchingModels: Boolean = false,
+    val promptModelSelector: Boolean = false,
     val totalNotesCount: Int = 0,
     val checklistsCount: Int = 0,
     val pinnedCount: Int = 0,
     val backupMessage: String? = null
+)
+
+private data class AiTransientUiState(
+    val message: String? = null,
+    val isFetchingModels: Boolean = false,
+    val promptModelSelector: Boolean = false
 )
 
 class SettingsViewModel(
@@ -52,13 +68,13 @@ class SettingsViewModel(
     private val notesRepository: NotesRepository
 ) : ViewModel() {
 
-    private val _message = MutableStateFlow<String?>(null)
+    private val _transient = MutableStateFlow(AiTransientUiState())
 
     val uiState: StateFlow<SettingsUiState> = combine(
         settingsRepository.settingsFlow,
         notesRepository.activeNotes,
-        _message
-    ) { snapshot, notes, msg ->
+        _transient
+    ) { snapshot, notes, transient ->
         SettingsUiState(
             themeMode = snapshot.themeMode,
             dynamicColor = snapshot.dynamicColor,
@@ -75,10 +91,18 @@ class SettingsViewModel(
             strikethroughCompleted = snapshot.strikethroughCompleted,
             moveCheckedToBottom = snapshot.moveCheckedToBottom,
             autoFocusNewNote = snapshot.autoFocusNewNote,
+            aiProvider = snapshot.activeAiProvider,
+            activeApiKey = snapshot.activeApiKey,
+            activeModelName = snapshot.activeModelName,
+            availableModels = snapshot.activeAvailableModels,
+            aiCustomBaseUrl = snapshot.aiCustomBaseUrl,
+            aiMemoriesCount = snapshot.aiMemories.size,
+            isFetchingModels = transient.isFetchingModels,
+            promptModelSelector = transient.promptModelSelector,
             totalNotesCount = notes.size,
             checklistsCount = notes.count { it.totalTasksCount > 0 },
             pinnedCount = notes.count { it.isPinned },
-            backupMessage = msg
+            backupMessage = transient.message
         )
     }.stateIn(
         scope = viewModelScope,
@@ -146,17 +170,92 @@ class SettingsViewModel(
         viewModelScope.launch { settingsRepository.setAutoFocusNewNote(enabled) }
     }
 
+    fun setAiProvider(provider: AiProvider) {
+        viewModelScope.launch {
+            settingsRepository.setAiProviderId(provider.id)
+        }
+    }
+
+    fun setAiCustomBaseUrl(baseUrl: String) {
+        viewModelScope.launch {
+            settingsRepository.setAiCustomBaseUrl(baseUrl)
+        }
+    }
+
+    fun saveApiKeyAndFetchModels(provider: AiProvider, apiKey: String, customBaseUrl: String) {
+        viewModelScope.launch {
+            val trimmedKey = apiKey.trim()
+            settingsRepository.setAiProviderId(provider.id)
+            settingsRepository.setAiApiKey(provider.id, trimmedKey)
+            if (provider == AiProvider.CUSTOM && customBaseUrl.isNotBlank()) {
+                settingsRepository.setAiCustomBaseUrl(customBaseUrl.trim())
+            }
+            if (trimmedKey.isBlank()) {
+                _transient.value = _transient.value.copy(
+                    message = "Cleared API key for ${provider.displayName}"
+                )
+                return@launch
+            }
+
+            _transient.value = _transient.value.copy(isFetchingModels = true)
+            val result = AiProviderClient.fetchModelsFromApi(
+                provider = provider,
+                apiKey = trimmedKey,
+                customBaseUrl = customBaseUrl
+            )
+            result.onSuccess { fetchedModels ->
+                settingsRepository.setAiFetchedModels(provider.id, fetchedModels)
+                val firstModel = fetchedModels.firstOrNull() ?: provider.defaultModel
+                if (uiState.value.activeModelName.isBlank()) {
+                    settingsRepository.setAiSelectedModel(provider.id, firstModel)
+                }
+                _transient.value = _transient.value.copy(
+                    isFetchingModels = false,
+                    promptModelSelector = true,
+                    message = "Fetched ${fetchedModels.size} models from ${provider.displayName} API"
+                )
+            }.onFailure { err ->
+                // Still open the model selector with suggested models + custom model input so user can choose or type custom
+                _transient.value = _transient.value.copy(
+                    isFetchingModels = false,
+                    promptModelSelector = true,
+                    message = "Key saved. Could not live-list models (${err.message ?: "check key"}) — select or enter a custom model."
+                )
+            }
+        }
+    }
+
+    fun selectAiModel(provider: AiProvider, modelName: String) {
+        val clean = modelName.trim()
+        if (clean.isBlank()) return
+        viewModelScope.launch {
+            settingsRepository.setAiSelectedModel(provider.id, clean)
+            _transient.value = _transient.value.copy(
+                promptModelSelector = false,
+                message = "Active model set to $clean (${provider.displayName})"
+            )
+        }
+    }
+
+    fun dismissModelSelectorPrompt() {
+        _transient.value = _transient.value.copy(promptModelSelector = false)
+    }
+
+    fun openModelSelectorPrompt() {
+        _transient.value = _transient.value.copy(promptModelSelector = true)
+    }
+
     fun resetSettingsToDefaults() {
         viewModelScope.launch {
             settingsRepository.resetToDefaults()
-            _message.value = "All preferences restored to defaults"
+            _transient.value = _transient.value.copy(message = "All preferences restored to defaults")
         }
     }
 
     fun clearAllNotes() {
         viewModelScope.launch {
             notesRepository.deleteAllNotes()
-            _message.value = "All notes have been cleared from local storage"
+            _transient.value = _transient.value.copy(message = "All notes have been cleared from local storage")
         }
     }
 
@@ -164,9 +263,9 @@ class SettingsViewModel(
         viewModelScope.launch {
             val result = backupManager.exportNotesToJson(uri)
             result.onSuccess { count ->
-                _message.value = "Successfully exported $count notes to backup file"
+                _transient.value = _transient.value.copy(message = "Successfully exported $count notes to backup file")
             }.onFailure { err ->
-                _message.value = "Export failed: ${err.message}"
+                _transient.value = _transient.value.copy(message = "Export failed: ${err.message}")
             }
         }
     }
@@ -175,14 +274,14 @@ class SettingsViewModel(
         viewModelScope.launch {
             val result = backupManager.importNotesFromJson(uri)
             result.onSuccess { count ->
-                _message.value = "Successfully imported $count notes!"
+                _transient.value = _transient.value.copy(message = "Successfully imported $count notes!")
             }.onFailure { err ->
-                _message.value = "Import failed: ${err.message}"
+                _transient.value = _transient.value.copy(message = "Import failed: ${err.message}")
             }
         }
     }
 
     fun clearMessage() {
-        _message.value = null
+        _transient.value = _transient.value.copy(message = null)
     }
 }
