@@ -1,5 +1,5 @@
 <resources>
     <string name="app_name">Zainotes</string>
-    <string name="app_version">2.0.0</string>
+    <string name="app_version">2.1.0</string>
     <string name="license_name">GNU AGPLv3</string>
 </resources>
