@@ -16,7 +16,8 @@ enum class BlockType {
     TASK,
     BULLET,
     NUMBERED,
-    HEADING
+    HEADING,
+    QUOTE
 }
 
 data class NoteBlock(
@@ -24,8 +25,20 @@ data class NoteBlock(
     val type: BlockType = BlockType.TEXT,
     val content: String = "",
     val isChecked: Boolean = false,
-    val order: Int = 0
-)
+    val order: Int = 0,
+    val isBold: Boolean = false,
+    val isItalic: Boolean = false,
+    val isUnderline: Boolean = false,
+    val isStrikethrough: Boolean = false,
+    val isHighlighted: Boolean = false,
+    val isMonospace: Boolean = false,
+    val textScale: Int = 0, // -1 = Small, 0 = Normal, 1 = Large
+    val textAlign: Int = 0  // 0 = Start, 1 = Center, 2 = End
+) {
+    val hasCustomFormatting: Boolean
+        get() = isBold || isItalic || isUnderline || isStrikethrough ||
+            isHighlighted || isMonospace || textScale != 0 || textAlign != 0
+}
 
 /**
  * Calculates the sequential list number for a [BlockType.NUMBERED] block,

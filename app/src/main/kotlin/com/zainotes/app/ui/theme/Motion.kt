@@ -9,6 +9,7 @@
 
 package com.zainotes.app.ui.theme
 
+import androidx.compose.animation.core.CubicBezierEasing
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.spring
@@ -16,17 +17,35 @@ import androidx.compose.animation.core.tween
 
 /**
  * Material 3 Expressive Motion Tokens.
- * Expressive motion emphasizes physical weight, responsive springs, and playful bouncy feedback.
+ *
+ * Implements M3 Expressive spatial and effects spring physics:
+ * - Spatial springs allow slight physical overshoot (low/medium bouncy damping) for
+ *   movement, size expansion, thumb travel, and container morphing.
+ * - Effects springs are critically damped (no bounce) for color, alpha, and elevation.
  */
 object ExpressiveMotion {
+    val EmphasizedDecelerate = CubicBezierEasing(0.05f, 0.7f, 0.1f, 1.0f)
+    val EmphasizedAccelerate = CubicBezierEasing(0.3f, 0.0f, 0.8f, 0.15f)
+    val StandardEasing = CubicBezierEasing(0.2f, 0.0f, 0.0f, 1.0f)
+
     val BouncySpring = spring<Float>(
-        dampingRatio = Spring.DampingRatioMediumBouncy,
-        stiffness = Spring.StiffnessLow
+        dampingRatio = Spring.DampingRatioLowBouncy,
+        stiffness = Spring.StiffnessMedium
     )
 
     val SnappySpring = spring<Float>(
         dampingRatio = Spring.DampingRatioNoBouncy,
         stiffness = Spring.StiffnessMedium
+    )
+
+    fun <T> spatialFastSpec() = spring<T>(
+        dampingRatio = 0.68f,
+        stiffness = 650f
+    )
+
+    fun <T> spatialDefaultSpec() = spring<T>(
+        dampingRatio = 0.74f,
+        stiffness = 420f
     )
 
     fun <T> snappySpec() = spring<T>(
@@ -35,16 +54,16 @@ object ExpressiveMotion {
     )
 
     fun <T> bouncySpec() = spring<T>(
-        dampingRatio = Spring.DampingRatioMediumBouncy,
-        stiffness = Spring.StiffnessLow
+        dampingRatio = Spring.DampingRatioLowBouncy,
+        stiffness = Spring.StiffnessMediumLow
     )
 
     val EmphasizedSpatial = tween<Float>(
-        durationMillis = 500,
+        durationMillis = 400,
         easing = FastOutSlowInEasing
     )
 
-    const val DurationShort = 200
-    const val DurationMedium = 350
-    const val DurationLong = 500
+    const val DurationShort = 180
+    const val DurationMedium = 280
+    const val DurationLong = 420
 }

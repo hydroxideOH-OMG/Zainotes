@@ -12,7 +12,6 @@ package com.zainotes.app.data.repository
 import com.zainotes.app.data.local.NoteDao
 import com.zainotes.app.data.model.CardSize
 import com.zainotes.app.data.model.Note
-import com.zainotes.app.data.model.NoteBlock
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flowOn
@@ -72,6 +71,21 @@ class NotesRepository(private val noteDao: NoteDao) {
 
     suspend fun updateColor(id: Long, colorId: String) = withContext(Dispatchers.IO) {
         noteDao.updateColor(id, colorId)
+    }
+
+    suspend fun updateBackgroundTheme(id: Long, backgroundTheme: String) = withContext(Dispatchers.IO) {
+        noteDao.updateBackgroundTheme(id, backgroundTheme)
+    }
+
+    suspend fun duplicateNote(note: Note): Long = withContext(Dispatchers.IO) {
+        val now = System.currentTimeMillis()
+        val copy = note.copy(
+            id = 0L,
+            title = if (note.title.isBlank()) "Copied Note" else "${note.title} (Copy)",
+            createdAt = now,
+            updatedAt = now
+        )
+        noteDao.insertNote(copy)
     }
 
     suspend fun togglePin(id: Long, isPinned: Boolean) = withContext(Dispatchers.IO) {

@@ -9,11 +9,13 @@
 
 package com.zainotes.app.ui.components
 
+import android.text.format.DateUtils
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -26,18 +28,20 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AspectRatio
-import androidx.compose.material.icons.filled.CheckCircle
-import androidx.compose.material.icons.filled.ColorLens
-import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.ContentCopy
+import androidx.compose.material.icons.filled.DeleteOutline
 import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.Palette
+import androidx.compose.material.icons.filled.PhotoSizeSelectLarge
 import androidx.compose.material.icons.filled.PushPin
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CheckboxDefaults
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -45,6 +49,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
@@ -58,21 +63,22 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.zainotes.app.data.model.BlockType
 import com.zainotes.app.data.model.CardSize
 import com.zainotes.app.data.model.Note
 import com.zainotes.app.data.model.NoteBackgroundTheme
 import com.zainotes.app.data.model.NoteBlock
 import com.zainotes.app.data.model.getNumberedIndex
-import com.zainotes.app.ui.components.CardSizePickerSheet
-import com.zainotes.app.ui.components.FreeformCropResizeDialog
+import com.zainotes.app.data.preferences.AppSettingsSnapshot
 import com.zainotes.app.ui.theme.CardShapeExpressive
 import com.zainotes.app.ui.theme.ExpressiveMotion
+import com.zainotes.app.ui.theme.GoogleSansFlexFontFamily
 import com.zainotes.app.ui.theme.NoteColor
 
 @OptIn(ExperimentalFoundationApi::class, ExperimentalMaterial3Api::class)
@@ -83,20 +89,29 @@ fun NoteCard(
     onTaskToggle: (blockId: String, isChecked: Boolean) -> Unit,
     onCardSizeChange: (CardSize) -> Unit,
     onColorChange: (String) -> Unit,
+    onBackgroundThemeChange: (String) -> Unit = {},
+    onDuplicate: () -> Unit = {},
     onTogglePin: () -> Unit,
     onDelete: () -> Unit,
+    settings: AppSettingsSnapshot = AppSettingsSnapshot(),
     modifier: Modifier = Modifier
 ) {
     val isDark = MaterialTheme.colorScheme.background.luminance() < 0.5f
     val noteColor = NoteColor.fromId(note.colorId)
-    val cardBg = noteColor.containerColor(isDark, MaterialTheme.colorScheme.surfaceContainerHigh)
+
+    val cardBg = when {
+        isDark && settings.amoledPureBlackCards && noteColor == NoteColor.DEFAULT -> Color.Black
+        else -> noteColor.containerColor(isDark, MaterialTheme.colorScheme.surfaceContainerHigh)
+    }
     val cardContent = noteColor.contentColor(isDark, MaterialTheme.colorScheme.onSurface)
 
     var showMenu by remember { mutableStateOf(false) }
     var confirmDelete by remember { mutableStateOf(false) }
     var showSizePicker by remember { mutableStateOf(false) }
+    var showThemePicker by remember { mutableStateOf(false) }
     var showFreeformCropDialog by remember { mutableStateOf(false) }
     val sizeSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    val themeSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
     val maxPreviewItems = when (note.cardSize) {
         CardSize.COMPACT -> 2
@@ -105,6 +120,8 @@ fun NoteCard(
         CardSize.HERO -> 8
         CardSize.FREEFORM -> Int.MAX_VALUE
     }
+
+    val themeEnum = NoteBackgroundTheme.fromId(note.backgroundTheme)
 
     Card(
         shape = CardShapeExpressive,
@@ -115,199 +132,270 @@ fun NoteCard(
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
         modifier = modifier
             .fillMaxWidth()
-            .animateContentSize(animationSpec = ExpressiveMotion.snappySpec())
+            .animateContentSize(animationSpec = ExpressiveMotion.spatialDefaultSpec())
             .clip(CardShapeExpressive)
+            .then(
+                if (isDark && settings.amoledPureBlackCards) {
+                    Modifier.border(
+                        width = 1.dp,
+                        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f),
+                        shape = CardShapeExpressive
+                    )
+                } else {
+                    Modifier
+                }
+            )
             .combinedClickable(
                 onClick = onClick,
                 onLongClick = { showMenu = true }
             )
     ) {
         Box(modifier = Modifier.fillMaxWidth()) {
-            NoteBackgroundRenderer(
-                theme = NoteBackgroundTheme.fromId(note.backgroundTheme),
-                tint = cardContent,
-                modifier = Modifier.matchParentSize()
-            )
+            if (settings.showCardBackgrounds && themeEnum != NoteBackgroundTheme.NONE) {
+                NoteBackgroundRenderer(
+                    theme = themeEnum,
+                    tint = cardContent,
+                    modifier = Modifier.matchParentSize()
+                )
+            }
 
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(16.dp)
             ) {
-            // Header: Title and Pin Icon / Actions
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.Top,
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                if (note.title.isNotBlank()) {
-                    Text(
-                        text = note.title,
-                        style = when (note.cardSize) {
-                            CardSize.HERO -> MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold)
-                            else -> MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
-                        },
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis,
-                        color = cardContent,
-                        modifier = Modifier.weight(1f)
-                    )
-                } else {
-                    Spacer(modifier = Modifier.weight(1f))
-                }
-
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    if (note.isPinned) {
-                        Icon(
-                        imageVector = Icons.Default.PushPin,
-                        contentDescription = "Pinned",
-                        tint = cardContent,
-                            modifier = Modifier
-                                .size(18.dp)
-                                .padding(end = 4.dp)
-                        )
-                    }
-
-                    Box {
-                        IconButton(
-                            onClick = { showMenu = true },
-                            modifier = Modifier.size(48.dp)
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.MoreVert,
-                                contentDescription = "More options for ${note.title.ifBlank { "untitled note" }}",
-                                tint = cardContent.copy(alpha = 0.6f),
-                                modifier = Modifier.size(16.dp)
-                            )
-                        }
-
-                        DropdownMenu(
-                            expanded = showMenu,
-                            onDismissRequest = { showMenu = false }
-                        ) {
-                            DropdownMenuItem(
-                                text = { Text(if (note.isPinned) "Unpin note" else "Pin note") },
-                                onClick = {
-                                    onTogglePin()
-                                    showMenu = false
-                                }
-                            )
-                            DropdownMenuItem(
-                                text = { Text("Free-form sizing (Crop resize)") },
-                                onClick = {
-                                    showMenu = false
-                                    showFreeformCropDialog = true
-                                }
-                            )
-                            DropdownMenuItem(
-                                text = { Text("Resize card...") },
-                                onClick = {
-                                    showMenu = false
-                                    showSizePicker = true
-                                }
-                            )
-                            DropdownMenuItem(
-                                text = { Text("Wide banner (2x1)") },
-                                onClick = {
-                                    onCardSizeChange(CardSize.WIDE)
-                                    showMenu = false
-                                }
-                            )
-                            DropdownMenuItem(
-                                text = { Text("Standard tile (1x1)") },
-                                onClick = {
-                                    onCardSizeChange(CardSize.STANDARD)
-                                    showMenu = false
-                                }
-                            )
-                            DropdownMenuItem(
-                                text = { Text("Compact tile") },
-                                onClick = {
-                                    onCardSizeChange(CardSize.COMPACT)
-                                    showMenu = false
-                                }
-                            )
-                            DropdownMenuItem(
-                                text = { Text("Hero spotlight") },
-                                onClick = {
-                                    onCardSizeChange(CardSize.HERO)
-                                    showMenu = false
-                                }
-                            )
-                            DropdownMenuItem(
-                                text = { Text("Delete note") },
-                                onClick = {
-                                    showMenu = false
-                                    confirmDelete = true
-                                }
-                            )
-                        }
-                    }
-                }
-            }
-
-            // Task completion progress bar
-            if (note.totalTasksCount > 0) {
-                val taskProgress by animateFloatAsState(
-                    targetValue = note.completedTasksCount.toFloat() / note.totalTasksCount,
-                    animationSpec = ExpressiveMotion.snappySpec(),
-                    label = "taskProgress"
-                )
-                Spacer(modifier = Modifier.height(8.dp))
+                // Header: Title and Pin Icon / Actions
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically,
+                    verticalAlignment = Alignment.Top,
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
-                    LinearProgressIndicator(
-                        progress = { taskProgress },
-                        modifier = Modifier
-                            .weight(1f)
-                            .height(6.dp)
-                            .clip(CircleShape),
-                        color = MaterialTheme.colorScheme.primary,
-                        trackColor = cardContent.copy(alpha = 0.15f)
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(
-                        text = "${note.completedTasksCount}/${note.totalTasksCount}",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = cardContent.copy(alpha = 0.7f)
-                    )
-                }
-            }
-
-            // Content preview items
-            val previewBlocks = note.blocks.take(maxPreviewItems)
-            if (previewBlocks.isNotEmpty()) {
-                Spacer(modifier = Modifier.height(10.dp))
-                Column(
-                    verticalArrangement = Arrangement.spacedBy(4.dp),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    previewBlocks.forEachIndexed { index, block ->
-                        NoteBlockPreviewItem(
-                            block = block,
-                            cardContentColor = cardContent,
-                            numberedIndex = note.blocks.getNumberedIndex(index),
-                            onTaskToggle = { isChecked ->
-                                onTaskToggle(block.id, isChecked)
-                            }
+                    if (note.title.isNotBlank()) {
+                        Text(
+                            text = note.title,
+                            style = when (note.cardSize) {
+                                CardSize.HERO -> MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold)
+                                else -> MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
+                            },
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis,
+                            color = cardContent,
+                            modifier = Modifier.weight(1f)
                         )
+                    } else {
+                        Spacer(modifier = Modifier.weight(1f))
                     }
 
-                    if (note.blocks.size > maxPreviewItems) {
-                        Text(
-                            text = "+${note.blocks.size - maxPreviewItems} more items",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = cardContent.copy(alpha = 0.5f),
-                            modifier = Modifier.padding(top = 4.dp)
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        if (note.isPinned) {
+                            Icon(
+                                imageVector = Icons.Default.PushPin,
+                                contentDescription = "Pinned",
+                                tint = cardContent,
+                                modifier = Modifier
+                                    .size(18.dp)
+                                    .padding(end = 2.dp)
+                            )
+                        }
+
+                        Box {
+                            IconButton(
+                                onClick = { showMenu = true },
+                                modifier = Modifier.size(36.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.MoreVert,
+                                    contentDescription = "More options for ${note.title.ifBlank { "untitled note" }}",
+                                    tint = cardContent.copy(alpha = 0.65f),
+                                    modifier = Modifier.size(18.dp)
+                                )
+                            }
+
+                            DropdownMenu(
+                                expanded = showMenu,
+                                onDismissRequest = { showMenu = false }
+                            ) {
+                                DropdownMenuItem(
+                                    leadingIcon = { Icon(Icons.Default.PushPin, contentDescription = null, modifier = Modifier.size(18.dp)) },
+                                    text = { Text(if (note.isPinned) "Unpin note" else "Pin note") },
+                                    onClick = {
+                                        onTogglePin()
+                                        showMenu = false
+                                    }
+                                )
+                                DropdownMenuItem(
+                                    leadingIcon = { Icon(Icons.Default.Palette, contentDescription = null, modifier = Modifier.size(18.dp)) },
+                                    text = { Text("Color & Background Scene...") },
+                                    onClick = {
+                                        showMenu = false
+                                        showThemePicker = true
+                                    }
+                                )
+                                DropdownMenuItem(
+                                    leadingIcon = { Icon(Icons.Default.PhotoSizeSelectLarge, contentDescription = null, modifier = Modifier.size(18.dp)) },
+                                    text = { Text("Resize card...") },
+                                    onClick = {
+                                        showMenu = false
+                                        showSizePicker = true
+                                    }
+                                )
+                                DropdownMenuItem(
+                                    leadingIcon = { Icon(Icons.Default.AspectRatio, contentDescription = null, modifier = Modifier.size(18.dp)) },
+                                    text = { Text("Interactive Free-form Crop...") },
+                                    onClick = {
+                                        showMenu = false
+                                        showFreeformCropDialog = true
+                                    }
+                                )
+                                DropdownMenuItem(
+                                    leadingIcon = { Icon(Icons.Default.ContentCopy, contentDescription = null, modifier = Modifier.size(18.dp)) },
+                                    text = { Text("Duplicate note") },
+                                    onClick = {
+                                        showMenu = false
+                                        onDuplicate()
+                                    }
+                                )
+                                DropdownMenuItem(
+                                    leadingIcon = { Icon(Icons.Default.DeleteOutline, contentDescription = null, tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(18.dp)) },
+                                    text = { Text("Delete note", color = MaterialTheme.colorScheme.error) },
+                                    onClick = {
+                                        showMenu = false
+                                        if (settings.confirmNoteDelete) {
+                                            confirmDelete = true
+                                        } else {
+                                            onDelete()
+                                        }
+                                    }
+                                )
+                            }
+                        }
+                    }
+                }
+
+                // Task completion progress bar
+                if (settings.showTaskProgress && note.totalTasksCount > 0) {
+                    val taskProgress by animateFloatAsState(
+                        targetValue = note.completedTasksCount.toFloat() / note.totalTasksCount,
+                        animationSpec = ExpressiveMotion.spatialFastSpec(),
+                        label = "taskProgress"
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        LinearProgressIndicator(
+                            progress = { taskProgress },
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(6.dp)
+                                .clip(CircleShape),
+                            color = MaterialTheme.colorScheme.primary,
+                            trackColor = cardContent.copy(alpha = 0.16f)
                         )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = "${note.completedTasksCount}/${note.totalTasksCount}",
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = FontWeight.SemiBold,
+                            color = cardContent.copy(alpha = 0.78f)
+                        )
+                    }
+                }
+
+                // Content preview items
+                val previewBlocks = note.blocks.take(maxPreviewItems)
+                if (previewBlocks.isNotEmpty()) {
+                    Spacer(modifier = Modifier.height(10.dp))
+                    Column(
+                        verticalArrangement = Arrangement.spacedBy(5.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        previewBlocks.forEachIndexed { index, block ->
+                            NoteBlockPreviewItem(
+                                block = block,
+                                cardContentColor = cardContent,
+                                strikethroughCompleted = settings.strikethroughCompleted,
+                                numberedIndex = note.blocks.getNumberedIndex(index),
+                                onTaskToggle = { isChecked ->
+                                    onTaskToggle(block.id, isChecked)
+                                }
+                            )
+                        }
+
+                        if (note.blocks.size > maxPreviewItems) {
+                            Text(
+                                text = "+${note.blocks.size - maxPreviewItems} more items",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = cardContent.copy(alpha = 0.55f),
+                                modifier = Modifier.padding(top = 4.dp)
+                            )
+                        }
+                    }
+                }
+
+                // Optional metadata footer (relative time + active theme badge)
+                if (settings.showNoteMetadata) {
+                    Spacer(modifier = Modifier.height(10.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        val relTime = remember(note.updatedAt) {
+                            DateUtils.getRelativeTimeSpanString(
+                                note.updatedAt,
+                                System.currentTimeMillis(),
+                                DateUtils.MINUTE_IN_MILLIS,
+                                DateUtils.FORMAT_ABBREV_RELATIVE
+                            ).toString()
+                        }
+                        Text(
+                            text = relTime,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = cardContent.copy(alpha = 0.52f)
+                        )
+
+                        if (themeEnum != NoteBackgroundTheme.NONE) {
+                            Surface(
+                                shape = CircleShape,
+                                color = cardContent.copy(alpha = 0.12f)
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    modifier = Modifier.padding(horizontal = 7.dp, vertical = 2.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = themeEnum.icon,
+                                        contentDescription = null,
+                                        tint = cardContent.copy(alpha = 0.75f),
+                                        modifier = Modifier.size(11.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text(
+                                        text = themeEnum.displayName,
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = cardContent.copy(alpha = 0.75f)
+                                    )
+                                }
+                            }
+                        }
                     }
                 }
             }
         }
     }
+
+    if (showThemePicker) {
+        NoteThemePickerSheet(
+            selectedColorId = note.colorId,
+            onColorSelected = onColorChange,
+            selectedThemeId = note.backgroundTheme,
+            onThemeSelected = onBackgroundThemeChange,
+            sheetState = themeSheetState,
+            onDismissRequest = { showThemePicker = false }
+        )
     }
 
     if (showFreeformCropDialog) {
@@ -340,10 +428,14 @@ fun NoteCard(
             text = { Text("This will permanently delete ${note.title.ifBlank { "this note" }}.") },
             confirmButton = {
                 TextButton(onClick = { confirmDelete = false; onDelete() }) {
-                    Text("Delete", color = MaterialTheme.colorScheme.error)
+                    Text("Delete", color = MaterialTheme.colorScheme.error, fontWeight = FontWeight.Bold)
                 }
             },
-            dismissButton = { TextButton(onClick = { confirmDelete = false }) { Text("Cancel") } }
+            dismissButton = {
+                TextButton(onClick = { confirmDelete = false }) {
+                    Text("Cancel")
+                }
+            }
         )
     }
 }
@@ -352,19 +444,44 @@ fun NoteCard(
 private fun NoteBlockPreviewItem(
     block: NoteBlock,
     cardContentColor: Color,
+    strikethroughCompleted: Boolean = true,
     numberedIndex: Int = 1,
     onTaskToggle: (Boolean) -> Unit
 ) {
+    val decorations = mutableListOf<TextDecoration>()
+    if (block.isUnderline) decorations.add(TextDecoration.Underline)
+    if (block.isStrikethrough || (block.type == BlockType.TASK && block.isChecked && strikethroughCompleted)) {
+        decorations.add(TextDecoration.LineThrough)
+    }
+    val combinedDecoration = if (decorations.isEmpty()) TextDecoration.None else TextDecoration.combine(decorations)
+
+    val itemStyle = MaterialTheme.typography.bodyMedium.copy(
+        fontWeight = if (block.isBold || block.type == BlockType.HEADING) FontWeight.Bold else FontWeight.Normal,
+        fontStyle = if (block.isItalic || block.type == BlockType.QUOTE) FontStyle.Italic else FontStyle.Normal,
+        fontFamily = if (block.isMonospace) FontFamily.Monospace else GoogleSansFlexFontFamily,
+        textDecoration = combinedDecoration
+    )
+
+    val rowModifier = if (block.isHighlighted) {
+        Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(8.dp))
+            .background(MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.45f))
+            .padding(horizontal = 6.dp, vertical = 2.dp)
+    } else {
+        Modifier.fillMaxWidth()
+    }
+
     when (block.type) {
         BlockType.TASK -> {
             val taskTextColor by animateColorAsState(
-                targetValue = if (block.isChecked) cardContentColor.copy(alpha = 0.86f) else cardContentColor,
+                targetValue = if (block.isChecked) cardContentColor.copy(alpha = 0.55f) else cardContentColor,
                 animationSpec = ExpressiveMotion.snappySpec(),
                 label = "taskTextColor"
             )
             Row(
                 verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier.fillMaxWidth()
+                modifier = rowModifier
             ) {
                 Checkbox(
                     checked = block.isChecked,
@@ -374,15 +491,12 @@ private fun NoteBlockPreviewItem(
                         uncheckedColor = cardContentColor.copy(alpha = 0.6f),
                         checkmarkColor = MaterialTheme.colorScheme.onPrimary
                     ),
-                    modifier = Modifier.size(48.dp)
+                    modifier = Modifier.size(34.dp)
                 )
                 Spacer(modifier = Modifier.width(6.dp))
                 Text(
                     text = block.content.ifBlank { "Task" },
-                    style = MaterialTheme.typography.bodyMedium.copy(
-                        color = taskTextColor,
-                        textDecoration = if (block.isChecked) TextDecoration.LineThrough else TextDecoration.None
-                    ),
+                    style = itemStyle.copy(color = taskTextColor),
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
@@ -391,17 +505,17 @@ private fun NoteBlockPreviewItem(
         BlockType.BULLET -> {
             Row(
                 verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier.fillMaxWidth()
+                modifier = rowModifier
             ) {
                 Box(
                     modifier = Modifier
                         .size(6.dp)
-                        .background(cardContentColor.copy(alpha = 0.7f), shape = CircleShape)
+                        .background(cardContentColor.copy(alpha = 0.75f), shape = CircleShape)
                 )
                 Spacer(modifier = Modifier.width(8.dp))
                 Text(
                     text = block.content,
-                    style = MaterialTheme.typography.bodyMedium.copy(color = cardContentColor),
+                    style = itemStyle.copy(color = cardContentColor),
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
@@ -410,7 +524,7 @@ private fun NoteBlockPreviewItem(
         BlockType.NUMBERED -> {
             Row(
                 verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier.fillMaxWidth()
+                modifier = rowModifier
             ) {
                 Text(
                     text = "$numberedIndex.",
@@ -423,32 +537,57 @@ private fun NoteBlockPreviewItem(
                 Spacer(modifier = Modifier.width(4.dp))
                 Text(
                     text = block.content,
-                    style = MaterialTheme.typography.bodyMedium.copy(color = cardContentColor),
+                    style = itemStyle.copy(color = cardContentColor),
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
             }
         }
+        BlockType.QUOTE -> {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = rowModifier
+            ) {
+                Box(
+                    modifier = Modifier
+                        .width(3.dp)
+                        .height(16.dp)
+                        .clip(CircleShape)
+                        .background(MaterialTheme.colorScheme.primary)
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    text = block.content,
+                    style = itemStyle.copy(color = cardContentColor.copy(alpha = 0.9f)),
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+        }
         BlockType.HEADING -> {
-            Text(
-                text = block.content,
-                style = MaterialTheme.typography.titleSmall.copy(
-                    fontWeight = FontWeight.Bold,
-                    color = cardContentColor
-                ),
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
+            if (block.content.isNotBlank()) {
+                Text(
+                    text = block.content,
+                    style = MaterialTheme.typography.titleSmall.copy(
+                        fontWeight = FontWeight.Bold,
+                        fontStyle = itemStyle.fontStyle,
+                        textDecoration = combinedDecoration,
+                        color = cardContentColor
+                    ),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = rowModifier
+                )
+            }
         }
         BlockType.TEXT -> {
             if (block.content.isNotBlank()) {
                 Text(
                     text = block.content,
-                    style = MaterialTheme.typography.bodyMedium.copy(
-                        color = cardContentColor
-                    ),
+                    style = itemStyle.copy(color = cardContentColor),
                     maxLines = 2,
-                    overflow = TextOverflow.Ellipsis
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = rowModifier
                 )
             }
         }

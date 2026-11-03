@@ -5,12 +5,18 @@
 
 package com.zainotes.app.ui.components
 
-import androidx.compose.animation.Crossfade
-import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
-import androidx.compose.foundation.background
+import androidx.compose.animation.expandHorizontally
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkHorizontally
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
@@ -37,8 +43,11 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -57,16 +66,16 @@ enum class DockDestination(
     val contentDescription: String
 ) {
     HOME(
-        label = "Home",
+        label = "Notes",
         activeIcon = Icons.Filled.Home,
         inactiveIcon = Icons.Outlined.Home,
         contentDescription = "Navigate to Home notes"
     ),
     AI_CHAT(
-        label = "AI Chat",
+        label = "Smart AI",
         activeIcon = Icons.Filled.AutoAwesome,
         inactiveIcon = Icons.Outlined.AutoAwesome,
-        contentDescription = "Navigate to AI Chat assistant"
+        contentDescription = "Navigate to Smart AI assistant"
     ),
     SETTINGS(
         label = "Settings",
@@ -79,10 +88,8 @@ enum class DockDestination(
 /**
  * Floating Bottom Navigation Dock for Zainotes.
  *
- * Implements a centered, floating bottom dock elevated above the screen content:
- * 1. Primary Navigation Bar: M3 Expressive floating pill with 3 destinations
- *    and active-pill expansion behavior.
- * 2. Standalone Action Button: Circular M3 FAB separated by an 8-12px gap.
+ * Uses Material 3 Expressive spatial spring physics for zero-lag, silky-smooth tab expansion
+ * and tactile press scaling without expensive multi-pass Crossfade/animateContentSize thrashing.
  */
 @Composable
 fun FloatingNavDock(
@@ -91,10 +98,21 @@ fun FloatingNavDock(
     onAddNote: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val fabInteractionSource = remember { MutableInteractionSource() }
+    val isFabPressed by fabInteractionSource.collectIsPressedAsState()
+    val fabScale by animateFloatAsState(
+        targetValue = if (isFabPressed) 0.91f else 1f,
+        animationSpec = spring(
+            dampingRatio = Spring.DampingRatioMediumBouncy,
+            stiffness = Spring.StiffnessMedium
+        ),
+        label = "fabPressScale"
+    )
+
     Box(
         modifier = modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 16.dp),
+            .padding(horizontal = 16.dp, vertical = 14.dp),
         contentAlignment = Alignment.BottomCenter
     ) {
         Row(
@@ -104,16 +122,16 @@ fun FloatingNavDock(
             // 1. Primary Navigation Bar (M3 Expressive Floating Navigation Pill)
             Surface(
                 modifier = Modifier
-                    .height(56.dp)
+                    .height(60.dp)
                     .shadow(
-                        elevation = 6.dp,
+                        elevation = 8.dp,
                         shape = CircleShape,
-                        ambientColor = MaterialTheme.colorScheme.scrim.copy(alpha = 0.15f),
-                        spotColor = MaterialTheme.colorScheme.scrim.copy(alpha = 0.25f)
+                        ambientColor = MaterialTheme.colorScheme.scrim.copy(alpha = 0.18f),
+                        spotColor = MaterialTheme.colorScheme.scrim.copy(alpha = 0.28f)
                     ),
                 shape = CircleShape,
-                color = MaterialTheme.colorScheme.surfaceContainer,
-                tonalElevation = 0.dp,
+                color = MaterialTheme.colorScheme.surfaceContainerHighest,
+                tonalElevation = 2.dp,
                 shadowElevation = 6.dp
             ) {
                 Row(
@@ -129,21 +147,26 @@ fun FloatingNavDock(
                         FloatingNavDockItem(
                             destination = destination,
                             isSelected = isSelected,
-                            onClick = { onDestinationSelected(destination) }
+                            onClick = {
+                                if (!isSelected) {
+                                    onDestinationSelected(destination)
+                                }
+                            }
                         )
                     }
                 }
             }
 
-            // 8px - 12px separation gap
             Spacer(modifier = Modifier.width(10.dp))
 
-            // 2. Standalone Action Button (Circular M3 FAB matching dock height)
+            // 2. Standalone Action Button (Circular M3 Expressive FAB matching dock height)
             FloatingActionButton(
                 onClick = onAddNote,
+                interactionSource = fabInteractionSource,
                 shape = CircleShape,
                 modifier = Modifier
-                    .size(56.dp)
+                    .size(60.dp)
+                    .scale(fabScale)
                     .semantics {
                         role = Role.Button
                         contentDescription = "Create new note"
@@ -152,7 +175,7 @@ fun FloatingNavDock(
                 contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
                 elevation = FloatingActionButtonDefaults.elevation(
                     defaultElevation = 6.dp,
-                    pressedElevation = 8.dp
+                    pressedElevation = 10.dp
                 )
             ) {
                 Icon(
@@ -172,19 +195,43 @@ private fun FloatingNavDockItem(
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val interactionSource = remember { MutableInteractionSource() }
+    val isPressed by interactionSource.collectIsPressedAsState()
+
+    val pillColor by animateColorAsState(
+        targetValue = if (isSelected) MaterialTheme.colorScheme.secondaryContainer else Color.Transparent,
+        animationSpec = spring(stiffness = Spring.StiffnessMedium),
+        label = "dockPillColor"
+    )
+
+    val contentColor by animateColorAsState(
+        targetValue = if (isSelected) MaterialTheme.colorScheme.onSecondaryContainer else MaterialTheme.colorScheme.onSurfaceVariant,
+        animationSpec = spring(stiffness = Spring.StiffnessMedium),
+        label = "dockContentColor"
+    )
+
+    val itemScale by animateFloatAsState(
+        targetValue = when {
+            isPressed -> 0.93f
+            isSelected -> 1.0f
+            else -> 0.98f
+        },
+        animationSpec = spring(
+            dampingRatio = 0.65f,
+            stiffness = 620f
+        ),
+        label = "dockItemScale"
+    )
+
     Surface(
         onClick = onClick,
+        interactionSource = interactionSource,
         shape = CircleShape,
-        color = if (isSelected) MaterialTheme.colorScheme.secondaryContainer else Color.Transparent,
-        contentColor = if (isSelected) MaterialTheme.colorScheme.onSecondaryContainer else MaterialTheme.colorScheme.onSurfaceVariant,
+        color = pillColor,
+        contentColor = contentColor,
         modifier = modifier
-            .height(44.dp)
-            .animateContentSize(
-                animationSpec = spring(
-                    dampingRatio = Spring.DampingRatioNoBouncy,
-                    stiffness = Spring.StiffnessMediumLow
-                )
-            )
+            .height(48.dp)
+            .scale(itemScale)
             .semantics {
                 selected = isSelected
                 role = Role.Tab
@@ -194,31 +241,43 @@ private fun FloatingNavDockItem(
         Row(
             verticalAlignment = Alignment.CenterVertically,
             modifier = Modifier.padding(
-                start = if (isSelected) 14.dp else 12.dp,
-                end = if (isSelected) 16.dp else 12.dp
+                start = if (isSelected) 16.dp else 14.dp,
+                end = if (isSelected) 18.dp else 14.dp
             )
         ) {
-            Crossfade(
-                targetState = isSelected,
-                animationSpec = tween(durationMillis = 250),
-                label = "dockIconCrossfade"
-            ) { active ->
-                Icon(
-                    imageVector = if (active) destination.activeIcon else destination.inactiveIcon,
-                    contentDescription = null,
-                    modifier = Modifier.size(22.dp)
-                )
-            }
+            Icon(
+                imageVector = if (isSelected) destination.activeIcon else destination.inactiveIcon,
+                contentDescription = null,
+                modifier = Modifier.size(22.dp)
+            )
 
-            if (isSelected) {
-                Spacer(modifier = Modifier.width(8.dp))
-                Text(
-                    text = destination.label,
-                    style = MaterialTheme.typography.labelLarge,
-                    fontWeight = FontWeight.SemiBold,
-                    maxLines = 1,
-                    softWrap = false
-                )
+            AnimatedVisibility(
+                visible = isSelected,
+                enter = expandHorizontally(
+                    animationSpec = spring(
+                        dampingRatio = 0.72f,
+                        stiffness = 540f
+                    ),
+                    expandFrom = Alignment.Start
+                ) + fadeIn(tween(140)),
+                exit = shrinkHorizontally(
+                    animationSpec = spring(
+                        dampingRatio = Spring.DampingRatioNoBouncy,
+                        stiffness = 600f
+                    ),
+                    shrinkTowards = Alignment.Start
+                ) + fadeOut(tween(100))
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = destination.label,
+                        style = MaterialTheme.typography.labelLarge,
+                        fontWeight = FontWeight.Bold,
+                        maxLines = 1,
+                        softWrap = false
+                    )
+                }
             }
         }
     }

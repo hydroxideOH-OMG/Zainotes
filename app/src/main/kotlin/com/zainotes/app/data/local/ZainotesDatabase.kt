@@ -54,9 +54,9 @@ abstract class ZainotesDatabase : RoomDatabase() {
                         // Seed welcome note on first install
                         CoroutineScope(Dispatchers.IO).launch {
                             val welcomeNote = Note(
-                                title = "Welcome to Zainotes! ✨",
+                                title = "Welcome to Zainotes",
                                 colorId = "lavender",
-                                backgroundTheme = "none",
+                                backgroundTheme = "dusk",
                                 cardSize = CardSize.WIDE,
                                 isPinned = true,
                                 blocks = listOf(

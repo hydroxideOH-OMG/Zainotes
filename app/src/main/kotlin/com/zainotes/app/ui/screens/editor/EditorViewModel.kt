@@ -15,12 +15,16 @@ import com.zainotes.app.data.model.BlockType
 import com.zainotes.app.data.model.CardSize
 import com.zainotes.app.data.model.Note
 import com.zainotes.app.data.model.NoteBlock
+import com.zainotes.app.data.preferences.SettingsRepository
 import com.zainotes.app.data.repository.NotesRepository
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import java.util.UUID
 
 data class EditorUiState(
@@ -32,42 +36,85 @@ data class EditorUiState(
     val isPinned: Boolean = false,
     val isArchived: Boolean = false,
     val blocks: List<NoteBlock> = listOf(NoteBlock(type = BlockType.TEXT)),
+    val activeBlockId: String? = null,
+    val strikethroughCompleted: Boolean = true,
+    val confirmNoteDelete: Boolean = true,
     val isSaving: Boolean = false,
     val isDeleted: Boolean = false
-)
+) {
+    val activeBlock: NoteBlock?
+        get() = blocks.find { it.id == activeBlockId } ?: blocks.lastOrNull()
+}
 
 class EditorViewModel(
     private val repository: NotesRepository,
-    private val initialNoteId: Long = 0L
+    private val initialNoteId: Long = 0L,
+    private val settingsRepository: SettingsRepository? = null
 ) : ViewModel() {
 
-    private val _uiState = MutableStateFlow(EditorUiState(noteId = initialNoteId))
+    private val initialBlock = NoteBlock(type = BlockType.TEXT)
+    private val _uiState = MutableStateFlow(
+        EditorUiState(
+            noteId = initialNoteId,
+            blocks = listOf(initialBlock),
+            activeBlockId = initialBlock.id
+        )
+    )
     val uiState: StateFlow<EditorUiState> = _uiState.asStateFlow()
 
+    private val saveMutex = Mutex()
+    private var moveCheckedToBottom: Boolean = false
+
     init {
-        if (initialNoteId > 0) {
-            loadNote(initialNoteId)
+        viewModelScope.launch {
+            val snapshot = settingsRepository?.settingsFlow?.first()
+            if (snapshot != null) {
+                moveCheckedToBottom = snapshot.moveCheckedToBottom
+                _uiState.update { state ->
+                    if (initialNoteId == 0L && state.noteId == 0L) {
+                        state.copy(
+                            colorId = snapshot.defaultNoteColor,
+                            backgroundTheme = snapshot.defaultBackgroundTheme,
+                            cardSize = snapshot.defaultCardSize,
+                            strikethroughCompleted = snapshot.strikethroughCompleted,
+                            confirmNoteDelete = snapshot.confirmNoteDelete
+                        )
+                    } else {
+                        state.copy(
+                            strikethroughCompleted = snapshot.strikethroughCompleted,
+                            confirmNoteDelete = snapshot.confirmNoteDelete
+                        )
+                    }
+                }
+            }
+            if (initialNoteId > 0) {
+                loadNote(initialNoteId)
+            }
         }
     }
 
-    private fun loadNote(id: Long) {
-        viewModelScope.launch {
-            val note = repository.getNoteByIdDirect(id)
-            if (note != null) {
-                _uiState.update {
-                    it.copy(
-                        noteId = note.id,
-                        title = note.title,
-                        colorId = note.colorId,
-                        backgroundTheme = note.backgroundTheme,
-                        cardSize = note.cardSize,
-                        isPinned = note.isPinned,
-                        isArchived = note.isArchived,
-                        blocks = if (note.blocks.isEmpty()) listOf(NoteBlock(type = BlockType.TEXT)) else note.blocks
-                    )
-                }
+    private suspend fun loadNote(id: Long) {
+        val note = repository.getNoteByIdDirect(id)
+        if (note != null) {
+            val loadedBlocks = if (note.blocks.isEmpty()) listOf(NoteBlock(type = BlockType.TEXT)) else note.blocks
+            _uiState.update {
+                it.copy(
+                    noteId = note.id,
+                    title = note.title,
+                    colorId = note.colorId,
+                    backgroundTheme = note.backgroundTheme,
+                    cardSize = note.cardSize,
+                    isPinned = note.isPinned,
+                    isArchived = note.isArchived,
+                    blocks = loadedBlocks,
+                    activeBlockId = loadedBlocks.firstOrNull()?.id
+                )
             }
         }
+    }
+
+    fun setActiveBlock(blockId: String) {
+        _uiState.update { it.copy(activeBlockId = blockId) }
     }
 
     fun updateTitle(newTitle: String) {
@@ -109,7 +156,7 @@ class EditorViewModel(
             } else {
                 mutable.add(newBlock)
             }
-            state.copy(blocks = mutable)
+            state.copy(blocks = mutable, activeBlockId = newBlock.id)
         }
         autoSave()
     }
@@ -119,7 +166,7 @@ class EditorViewModel(
             val updated = state.blocks.map { block ->
                 if (block.id == blockId) block.copy(content = content) else block
             }
-            state.copy(blocks = updated)
+            state.copy(blocks = updated, activeBlockId = blockId)
         }
         autoSave()
     }
@@ -129,7 +176,14 @@ class EditorViewModel(
             val updated = state.blocks.map { block ->
                 if (block.id == blockId) block.copy(isChecked = !block.isChecked) else block
             }
-            state.copy(blocks = updated)
+            val ordered = if (moveCheckedToBottom) {
+                val unchecked = updated.filterNot { it.type == BlockType.TASK && it.isChecked }
+                val checked = updated.filter { it.type == BlockType.TASK && it.isChecked }
+                unchecked + checked
+            } else {
+                updated
+            }
+            state.copy(blocks = ordered)
         }
         autoSave()
     }
@@ -139,19 +193,71 @@ class EditorViewModel(
             val updated = state.blocks.map { block ->
                 if (block.id == blockId) block.copy(type = newType) else block
             }
-            state.copy(blocks = updated)
+            state.copy(blocks = updated, activeBlockId = blockId)
         }
         autoSave()
+    }
+
+    // Rich text formatting toggles for the upper floating formatting bar
+    private fun updateActiveBlock(transform: (NoteBlock) -> NoteBlock) {
+        _uiState.update { state ->
+            val targetId = state.activeBlock?.id ?: return@update state
+            val updated = state.blocks.map { block ->
+                if (block.id == targetId) transform(block) else block
+            }
+            state.copy(blocks = updated, activeBlockId = targetId)
+        }
+        autoSave()
+    }
+
+    fun toggleBold() = updateActiveBlock { it.copy(isBold = !it.isBold) }
+
+    fun toggleItalic() = updateActiveBlock { it.copy(isItalic = !it.isItalic) }
+
+    fun toggleUnderline() = updateActiveBlock { it.copy(isUnderline = !it.isUnderline) }
+
+    fun toggleStrikethrough() = updateActiveBlock { it.copy(isStrikethrough = !it.isStrikethrough) }
+
+    fun toggleHighlight() = updateActiveBlock { it.copy(isHighlighted = !it.isHighlighted) }
+
+    fun toggleMonospace() = updateActiveBlock { it.copy(isMonospace = !it.isMonospace) }
+
+    fun cycleTextSize() = updateActiveBlock { block ->
+        val nextScale = when (block.textScale) {
+            0 -> 1
+            1 -> -1
+            else -> 0
+        }
+        block.copy(textScale = nextScale)
+    }
+
+    fun cycleTextAlign() = updateActiveBlock { block ->
+        val nextAlign = (block.textAlign + 1) % 3
+        block.copy(textAlign = nextAlign)
+    }
+
+    fun clearBlockFormatting() = updateActiveBlock { block ->
+        block.copy(
+            isBold = false,
+            isItalic = false,
+            isUnderline = false,
+            isStrikethrough = false,
+            isHighlighted = false,
+            isMonospace = false,
+            textScale = 0,
+            textAlign = 0
+        )
     }
 
     fun deleteBlock(blockId: String) {
         _uiState.update { state ->
             if (state.blocks.size <= 1) {
-                // If it's the last block, just reset it to empty text block
-                state.copy(blocks = listOf(NoteBlock(type = BlockType.TEXT)))
+                val fresh = NoteBlock(type = BlockType.TEXT)
+                state.copy(blocks = listOf(fresh), activeBlockId = fresh.id)
             } else {
                 val updated = state.blocks.filterNot { it.id == blockId }
-                state.copy(blocks = updated)
+                val nextActive = if (state.activeBlockId == blockId) updated.lastOrNull()?.id else state.activeBlockId
+                state.copy(blocks = updated, activeBlockId = nextActive)
             }
         }
         autoSave()
@@ -182,35 +288,41 @@ class EditorViewModel(
 
     fun deleteNote(onDeleted: () -> Unit) {
         viewModelScope.launch {
-            val id = _uiState.value.noteId
-            if (id > 0) {
-                repository.deleteNoteById(id)
+            saveMutex.withLock {
+                val id = _uiState.value.noteId
+                if (id > 0) {
+                    repository.deleteNoteById(id)
+                }
+                _uiState.update { it.copy(isDeleted = true) }
             }
-            _uiState.update { it.copy(isDeleted = true) }
             onDeleted()
         }
     }
 
     private fun autoSave() {
-        val current = _uiState.value
-        // Don't save empty notes that haven't been persisted yet
-        val hasContent = current.title.isNotBlank() || current.blocks.any { it.content.isNotBlank() }
-        if (!hasContent && current.noteId == 0L) return
-
         viewModelScope.launch {
-            val note = Note(
-                id = current.noteId,
-                title = current.title,
-                colorId = current.colorId,
-                backgroundTheme = current.backgroundTheme,
-                cardSize = current.cardSize,
-                isPinned = current.isPinned,
-                isArchived = current.isArchived,
-                blocks = current.blocks
-            )
-            val savedId = repository.saveNote(note)
-            if (current.noteId == 0L) {
-                _uiState.update { it.copy(noteId = savedId) }
+            saveMutex.withLock {
+                val current = _uiState.value
+                if (current.isDeleted) return@withLock
+
+                val hasTextContent = current.title.isNotBlank() || current.blocks.any { it.content.isNotBlank() }
+                val hasCustomAppearance = current.colorId != "default" || current.backgroundTheme != "none" || current.isPinned
+                if (!hasTextContent && !hasCustomAppearance && current.noteId == 0L) return@withLock
+
+                val note = Note(
+                    id = current.noteId,
+                    title = current.title,
+                    colorId = current.colorId,
+                    backgroundTheme = current.backgroundTheme,
+                    cardSize = current.cardSize,
+                    isPinned = current.isPinned,
+                    isArchived = current.isArchived,
+                    blocks = current.blocks
+                )
+                val savedId = repository.saveNote(note)
+                if (current.noteId == 0L && savedId > 0L) {
+                    _uiState.update { it.copy(noteId = savedId) }
+                }
             }
         }
     }
