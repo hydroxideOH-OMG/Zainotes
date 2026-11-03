@@ -5,6 +5,8 @@
 
 package com.zainotes.app.ui.screens.editor
 
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -46,16 +48,19 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.zainotes.app.data.model.BlockType
 import com.zainotes.app.data.model.NoteBackgroundTheme
 import com.zainotes.app.data.model.getNumberedIndex
+import com.zainotes.app.ui.components.AddMediaAttachmentSheet
 import com.zainotes.app.ui.components.BlockItem
 import com.zainotes.app.ui.components.CardSizePickerSheet
 import com.zainotes.app.ui.components.EditorFloatingDock
@@ -64,6 +69,8 @@ import com.zainotes.app.ui.components.NoteThemePickerSheet
 import com.zainotes.app.ui.theme.ExpressiveMotion
 import com.zainotes.app.ui.theme.NoteColor
 import com.zainotes.app.ui.theme.staggeredEntrance
+import com.zainotes.app.util.MediaAttachmentHelper
+import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -72,6 +79,8 @@ fun EditorScreen(
     onNavigateBack: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val context = LocalContext.current
+    val coroutineScope = rememberCoroutineScope()
     val state by viewModel.uiState.collectAsState()
     val isDark = MaterialTheme.colorScheme.background.luminance() < 0.5f
 
@@ -93,10 +102,86 @@ fun EditorScreen(
     var showDeleteDialog by remember { mutableStateOf(false) }
     var showThemePicker by remember { mutableStateOf(false) }
     var showSizePicker by remember { mutableStateOf(false) }
+    var showMediaPicker by remember { mutableStateOf(false) }
 
     val themeSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val sizeSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    val mediaSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val activeTheme = NoteBackgroundTheme.fromId(state.backgroundTheme)
+
+    val imagePickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenMultipleDocuments()
+    ) { uris ->
+        if (uris.isNotEmpty()) {
+            coroutineScope.launch {
+                uris.forEach { uri ->
+                    val imported = MediaAttachmentHelper.importMediaUri(
+                        context = context,
+                        sourceUri = uri,
+                        fallbackType = BlockType.IMAGE
+                    )
+                    if (imported != null) {
+                        viewModel.addMediaBlock(
+                            type = imported.blockType,
+                            mediaUri = imported.mediaUri,
+                            mediaName = imported.displayName,
+                            mediaMimeType = imported.mimeType,
+                            mediaDurationMs = imported.durationMs,
+                            mediaSizeBytes = imported.sizeBytes
+                        )
+                    }
+                }
+            }
+        }
+    }
+
+    val audioPickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument()
+    ) { uri ->
+        if (uri != null) {
+            coroutineScope.launch {
+                val imported = MediaAttachmentHelper.importMediaUri(
+                    context = context,
+                    sourceUri = uri,
+                    fallbackType = BlockType.AUDIO
+                )
+                if (imported != null) {
+                    viewModel.addMediaBlock(
+                        type = imported.blockType,
+                        mediaUri = imported.mediaUri,
+                        mediaName = imported.displayName,
+                        mediaMimeType = imported.mimeType,
+                        mediaDurationMs = imported.durationMs,
+                        mediaSizeBytes = imported.sizeBytes
+                    )
+                }
+            }
+        }
+    }
+
+    val videoPickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument()
+    ) { uri ->
+        if (uri != null) {
+            coroutineScope.launch {
+                val imported = MediaAttachmentHelper.importMediaUri(
+                    context = context,
+                    sourceUri = uri,
+                    fallbackType = BlockType.VIDEO
+                )
+                if (imported != null) {
+                    viewModel.addMediaBlock(
+                        type = imported.blockType,
+                        mediaUri = imported.mediaUri,
+                        mediaName = imported.displayName,
+                        mediaMimeType = imported.mimeType,
+                        mediaDurationMs = imported.durationMs,
+                        mediaSizeBytes = imported.sizeBytes
+                    )
+                }
+            }
+        }
+    }
 
     Scaffold(
         modifier = modifier
@@ -168,12 +253,13 @@ fun EditorScreen(
         bottomBar = {
             // Dual-tier Floating Bottom Navigation Dock for the note editor:
             // Upper floating pill: Rich Text Formatting (Bold, Italic, Underline, Strike, Highlight, Code, Size, Align, Clear)
-            // Lower floating dock: Left circle tick button (Done & save) + right long pill with block/canvas buttons
+            // Lower floating dock: Leftmost '+' button (Add Image/Audio/Video) + middle block pill + right Done button
             EditorFloatingDock(
                 activeBlock = state.activeBlock,
                 onDone = onNavigateBack,
                 onAddBlock = { type -> viewModel.addBlock(type) },
                 onOpenSizePicker = { showSizePicker = true },
+                onOpenMediaPicker = { showMediaPicker = true },
                 onToggleBold = viewModel::toggleBold,
                 onToggleItalic = viewModel::toggleItalic,
                 onToggleUnderline = viewModel::toggleUnderline,
@@ -336,6 +422,23 @@ fun EditorScreen(
             },
             sheetState = sizeSheetState,
             onDismissRequest = { showSizePicker = false }
+        )
+    }
+
+    // Add Media / File Attachment Sheet (opened from the leftmost '+' button in the bottom toolbar)
+    if (showMediaPicker) {
+        AddMediaAttachmentSheet(
+            sheetState = mediaSheetState,
+            onPickImage = {
+                imagePickerLauncher.launch(arrayOf("image/*"))
+            },
+            onPickAudio = {
+                audioPickerLauncher.launch(arrayOf("audio/*"))
+            },
+            onPickVideo = {
+                videoPickerLauncher.launch(arrayOf("video/*"))
+            },
+            onDismissRequest = { showMediaPicker = false }
         )
     }
 }

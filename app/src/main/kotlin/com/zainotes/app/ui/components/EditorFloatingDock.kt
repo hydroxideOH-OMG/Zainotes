@@ -25,6 +25,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.AspectRatio
 import androidx.compose.material.icons.filled.BorderColor
 import androidx.compose.material.icons.filled.Check
@@ -79,9 +80,10 @@ import com.zainotes.app.data.model.NoteBlock
  *    Positioned directly above the bottom bar, styled as a matching M3 Expressive floating pill,
  *    providing Bold, Italic, Underline, Strikethrough, Highlight, Code/Monospace, Font Size,
  *    Text Alignment, and Clear Formatting for the active block.
- * 2. Lower Floating Bar (Block & Canvas Dock):
- *    Preserves the signature left circular Check (Save & Done) FAB + right floating pill
- *    containing Text, Bullets, Checklist, 1 2 3, Heading, Quote, Theme, and Card Size.
+ * 2. Lower Floating Bar (Block & Media Dock):
+ *    Leftmost circular '+' button to add files (Images, Audio, Video) + middle floating pill
+ *    containing Text, Checklist, Bullets, 1 2 3, Heading, Quote, Table, Code, and Size +
+ *    right circular Check (Done) button.
  */
 @Composable
 fun EditorFloatingDock(
@@ -89,6 +91,7 @@ fun EditorFloatingDock(
     onDone: () -> Unit,
     onAddBlock: (BlockType) -> Unit,
     onOpenSizePicker: () -> Unit,
+    onOpenMediaPicker: () -> Unit = {},
     onToggleBold: () -> Unit = {},
     onToggleItalic: () -> Unit = {},
     onToggleUnderline: () -> Unit = {},
@@ -233,33 +236,34 @@ fun EditorFloatingDock(
             }
         }
 
-        // 2. Lower Floating Bar: Left circular Check FAB + Right Block/Canvas Pill
+        // 2. Lower Floating Bar: Leftmost '+' FAB (Add Image/Audio/Video) + Middle Block Pill + Right Check (Done) FAB
         Row(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.Center,
             modifier = Modifier.fillMaxWidth()
         ) {
-            val doneInteraction = remember { MutableInteractionSource() }
-            val isDonePressed by doneInteraction.collectIsPressedAsState()
-            val doneScale by animateFloatAsState(
-                targetValue = if (isDonePressed) 0.90f else 1f,
+            val addMediaInteraction = remember { MutableInteractionSource() }
+            val isAddMediaPressed by addMediaInteraction.collectIsPressedAsState()
+            val addMediaScale by animateFloatAsState(
+                targetValue = if (isAddMediaPressed) 0.90f else 1f,
                 animationSpec = spring(
                     dampingRatio = Spring.DampingRatioMediumBouncy,
                     stiffness = Spring.StiffnessMedium
                 ),
-                label = "doneButtonScale"
+                label = "addMediaButtonScale"
             )
 
+            // Most left button: '+' button to add Images, Audio, or Video files
             FloatingActionButton(
-                onClick = onDone,
-                interactionSource = doneInteraction,
+                onClick = onOpenMediaPicker,
+                interactionSource = addMediaInteraction,
                 shape = CircleShape,
                 modifier = Modifier
-                    .size(56.dp)
-                    .scale(doneScale)
+                    .size(54.dp)
+                    .scale(addMediaScale)
                     .semantics {
                         role = Role.Button
-                        contentDescription = "Done editing note"
+                        contentDescription = "Add image, audio, or video file"
                     },
                 containerColor = MaterialTheme.colorScheme.primaryContainer,
                 contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
@@ -269,19 +273,19 @@ fun EditorFloatingDock(
                 )
             ) {
                 Icon(
-                    imageVector = Icons.Default.Check,
-                    contentDescription = "Done editing note",
+                    imageVector = Icons.Default.Add,
+                    contentDescription = "Add image, audio, or video file",
                     modifier = Modifier.size(26.dp)
                 )
             }
 
-            Spacer(modifier = Modifier.width(10.dp))
+            Spacer(modifier = Modifier.width(8.dp))
 
-            // Right Long Floating Pill with Block Insertion & Theme Controls
+            // Middle Long Floating Pill with Block Insertion & Theme Controls
             Surface(
                 modifier = Modifier
                     .weight(1f, fill = false)
-                    .height(56.dp)
+                    .height(54.dp)
                     .shadow(
                         elevation = 6.dp,
                         shape = CircleShape,
@@ -295,7 +299,7 @@ fun EditorFloatingDock(
             ) {
                 Row(
                     modifier = Modifier
-                        .padding(horizontal = 8.dp, vertical = 6.dp)
+                        .padding(horizontal = 8.dp, vertical = 5.dp)
                         .horizontalScroll(rememberScrollState()),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(4.dp)
@@ -363,6 +367,44 @@ fun EditorFloatingDock(
                         contentDescription = "Change card size layout"
                     )
                 }
+            }
+
+            Spacer(modifier = Modifier.width(8.dp))
+
+            val doneInteraction = remember { MutableInteractionSource() }
+            val isDonePressed by doneInteraction.collectIsPressedAsState()
+            val doneScale by animateFloatAsState(
+                targetValue = if (isDonePressed) 0.90f else 1f,
+                animationSpec = spring(
+                    dampingRatio = Spring.DampingRatioMediumBouncy,
+                    stiffness = Spring.StiffnessMedium
+                ),
+                label = "doneButtonScale"
+            )
+
+            FloatingActionButton(
+                onClick = onDone,
+                interactionSource = doneInteraction,
+                shape = CircleShape,
+                modifier = Modifier
+                    .size(54.dp)
+                    .scale(doneScale)
+                    .semantics {
+                        role = Role.Button
+                        contentDescription = "Done editing note"
+                    },
+                containerColor = MaterialTheme.colorScheme.secondaryContainer,
+                contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
+                elevation = FloatingActionButtonDefaults.elevation(
+                    defaultElevation = 6.dp,
+                    pressedElevation = 10.dp
+                )
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Check,
+                    contentDescription = "Done editing note",
+                    modifier = Modifier.size(24.dp)
+                )
             }
         }
     }

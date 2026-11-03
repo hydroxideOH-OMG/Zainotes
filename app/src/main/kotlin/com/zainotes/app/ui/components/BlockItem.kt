@@ -125,6 +125,58 @@ fun BlockItem(
         label = "checkboxScale"
     )
 
+    when (block.type) {
+        BlockType.IMAGE -> {
+            NoteImageBlockCard(
+                block = block,
+                index = index,
+                totalBlocks = totalBlocks,
+                isFocused = isFocused,
+                contentColor = contentColor,
+                onFocused = onFocused,
+                onCaptionChange = onContentChange,
+                onMoveUp = onMoveUp,
+                onMoveDown = onMoveDown,
+                onDelete = onDelete,
+                modifier = modifier
+            )
+            return
+        }
+        BlockType.AUDIO -> {
+            NoteAudioBlockCard(
+                block = block,
+                index = index,
+                totalBlocks = totalBlocks,
+                isFocused = isFocused,
+                contentColor = contentColor,
+                onFocused = onFocused,
+                onCaptionChange = onContentChange,
+                onMoveUp = onMoveUp,
+                onMoveDown = onMoveDown,
+                onDelete = onDelete,
+                modifier = modifier
+            )
+            return
+        }
+        BlockType.VIDEO -> {
+            NoteVideoBlockCard(
+                block = block,
+                index = index,
+                totalBlocks = totalBlocks,
+                isFocused = isFocused,
+                contentColor = contentColor,
+                onFocused = onFocused,
+                onCaptionChange = onContentChange,
+                onMoveUp = onMoveUp,
+                onMoveDown = onMoveDown,
+                onDelete = onDelete,
+                modifier = modifier
+            )
+            return
+        }
+        else -> {}
+    }
+
     if (block.type == BlockType.TABLE) {
         val tableRows = block.resolvedTable()
         val rowCount = tableRows.size.coerceAtLeast(1)
@@ -403,7 +455,7 @@ fun BlockItem(
                         .size(18.dp)
                 )
             }
-            BlockType.TEXT, BlockType.TABLE -> {
+            BlockType.TEXT, BlockType.TABLE, BlockType.IMAGE, BlockType.AUDIO, BlockType.VIDEO -> {
                 Spacer(modifier = Modifier.width(12.dp))
             }
         }
@@ -465,7 +517,7 @@ fun BlockItem(
                     BlockType.HEADING -> "Section heading..."
                     BlockType.QUOTE -> "Write a quote or callout..."
                     BlockType.CODE -> "Write code snippet..."
-                    BlockType.TEXT, BlockType.TABLE -> "Write note text..."
+                    BlockType.TEXT, BlockType.TABLE, BlockType.IMAGE, BlockType.AUDIO, BlockType.VIDEO -> "Write note text..."
                 }
                 Text(
                     text = placeholder,

@@ -16,7 +16,6 @@
 - 🎨 **Material 3 Expressive System**: Vibrant color palettes, dynamic Monet theming, organic rounded corners, Google Sans Flex typography, spring physics, and fluid interactive components.
 - 🖤 **Pure AMOLED Black**: True `#000000` pitch black mode across the canvas, cards, floating bottom navigation, editor actions, and dialog sheets for maximum OLED battery savings and contrast.
 - 🤖 **Native AI Assistant & Tools**: Dedicated AI workspace with multi-provider connectivity, customizable endpoints, persistent chat sessions, memory management, and contextual note generation.
-- ✂️ **Interactive Free-Form Sizing**: Crop-style visual card resizer with 4-corner draggable handles and rule-of-thirds composition guides to shape notes your way.
 - 🖼️ **15 Vector Background Themes**: Beautifully bounded native vector illustrations including Groceries, Food & Cooking, Music, Recipes, Notes, Places, Cinema, Celebration, Storm, Dusk, Flora, Doodles, Ruled Lines, Graph Grid, and Dot Matrix.
 - 📝 **Hybrid Block Architecture**:
   - **Rich Text Formatting**: Seamless inline bold, italic, underline, and strikethrough styling.

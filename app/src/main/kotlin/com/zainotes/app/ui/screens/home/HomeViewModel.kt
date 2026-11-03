@@ -72,6 +72,7 @@ class HomeViewModel(
         } else {
             notes.filter { note ->
                 note.title.contains(trimmedQuery, ignoreCase = true) ||
+                    note.previewText.contains(trimmedQuery, ignoreCase = true) ||
                     note.blocks.any { it.content.contains(trimmedQuery, ignoreCase = true) }
             }
         }

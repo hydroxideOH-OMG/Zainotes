@@ -32,6 +32,7 @@ val Context.dataStore: DataStore<Preferences> by preferencesDataStore(name = "za
 data class AppSettingsSnapshot(
     val themeMode: ThemeMode = ThemeMode.SYSTEM,
     val dynamicColor: Boolean = true,
+    val themeAccentColor: String = "violet",
     val amoledPureBlackCards: Boolean = false,
     val showCardBackgrounds: Boolean = true,
     val defaultCardSize: CardSize = CardSize.FREEFORM,
@@ -78,6 +79,7 @@ class SettingsRepository(private val context: Context) {
     private object PreferencesKeys {
         val THEME_MODE = stringPreferencesKey("theme_mode")
         val DYNAMIC_COLOR = booleanPreferencesKey("dynamic_color")
+        val THEME_ACCENT_COLOR = stringPreferencesKey("theme_accent_color")
         val AMOLED_PURE_BLACK_CARDS = booleanPreferencesKey("amoled_pure_black_cards")
         val SHOW_CARD_BACKGROUNDS = booleanPreferencesKey("show_card_backgrounds")
         val DEFAULT_CARD_SIZE = stringPreferencesKey("default_card_size")
@@ -154,6 +156,7 @@ class SettingsRepository(private val context: Context) {
         AppSettingsSnapshot(
             themeMode = resolvedTheme,
             dynamicColor = preferences[PreferencesKeys.DYNAMIC_COLOR] ?: true,
+            themeAccentColor = preferences[PreferencesKeys.THEME_ACCENT_COLOR] ?: "violet",
             amoledPureBlackCards = preferences[PreferencesKeys.AMOLED_PURE_BLACK_CARDS] ?: false,
             showCardBackgrounds = preferences[PreferencesKeys.SHOW_CARD_BACKGROUNDS] ?: true,
             defaultCardSize = CardSize.fromName(sizeName),
@@ -180,6 +183,7 @@ class SettingsRepository(private val context: Context) {
 
     val themeMode: Flow<ThemeMode> = settingsFlow.map { it.themeMode }
     val dynamicColor: Flow<Boolean> = settingsFlow.map { it.dynamicColor }
+    val themeAccentColor: Flow<String> = settingsFlow.map { it.themeAccentColor }
     val amoledPureBlackCards: Flow<Boolean> = settingsFlow.map { it.amoledPureBlackCards }
     val showCardBackgrounds: Flow<Boolean> = settingsFlow.map { it.showCardBackgrounds }
     val defaultCardSize: Flow<CardSize> = settingsFlow.map { it.defaultCardSize }
@@ -200,6 +204,10 @@ class SettingsRepository(private val context: Context) {
 
     suspend fun setDynamicColor(enabled: Boolean) {
         context.dataStore.edit { it[PreferencesKeys.DYNAMIC_COLOR] = enabled }
+    }
+
+    suspend fun setThemeAccentColor(colorId: String) {
+        context.dataStore.edit { it[PreferencesKeys.THEME_ACCENT_COLOR] = colorId }
     }
 
     suspend fun setAmoledPureBlackCards(enabled: Boolean) {

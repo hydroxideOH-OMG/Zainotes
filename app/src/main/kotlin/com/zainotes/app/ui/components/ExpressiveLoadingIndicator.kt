@@ -221,6 +221,7 @@ fun ExpressiveWaveProgressBar(
 @Composable
 fun ExpressiveAiThinkingCard(
     modelDisplayName: String,
+    statusOverride: String? = null,
     modifier: Modifier = Modifier
 ) {
     var elapsedSeconds by remember { mutableIntStateOf(0) }
@@ -252,7 +253,8 @@ fun ExpressiveAiThinkingCard(
     )
 
     val statusHint = when {
-        elapsedSeconds < 4 -> "Crafting response..."
+        !statusOverride.isNullOrBlank() -> statusOverride
+        elapsedSeconds < 4 -> "Connecting to stream..."
         elapsedSeconds < 12 -> "Reasoning & checking workspace context..."
         else -> "Deep thinking (${elapsedSeconds}s) — local or reasoning models can take a moment..."
     }
