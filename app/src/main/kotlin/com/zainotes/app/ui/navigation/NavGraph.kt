@@ -16,6 +16,7 @@ import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.runtime.Composable
@@ -32,6 +33,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.platform.LocalDensity
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavHostController
 import androidx.navigation.NavType
@@ -284,9 +286,11 @@ fun ZainotesNavGraph(
             }
         }
 
+        val isImeVisible = WindowInsets.ime.getBottom(LocalDensity.current) > 0
+
         // Floating Bottom Navigation Dock (Pill + Standalone Circular/Morphing + FAB)
         AnimatedVisibility(
-            visible = !isEditor,
+            visible = !isEditor && !isImeVisible,
             enter = slideInVertically(
                 initialOffsetY = { it },
                 animationSpec = ExpressiveMotion.spatialHeroSpec()

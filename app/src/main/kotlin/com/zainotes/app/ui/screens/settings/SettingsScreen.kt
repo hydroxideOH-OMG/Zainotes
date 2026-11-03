@@ -485,9 +485,9 @@ fun SettingsScreen(
                             .expressivePressable(saveBtnInteraction, pressedScale = 0.95f)
                     ) {
                         if (state.isFetchingModels) {
-                            CircularProgressIndicator(
-                                modifier = Modifier.size(18.dp),
-                                strokeWidth = 2.dp
+                            com.zainotes.app.ui.components.ExpressiveMorphingIndicator(
+                                size = 22.dp,
+                                color = MaterialTheme.colorScheme.primary
                             )
                         } else {
                             Icon(

@@ -19,6 +19,7 @@ import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
+import com.zainotes.app.data.ai.AiChatSession
 import com.zainotes.app.data.ai.AiMemoryItem
 import com.zainotes.app.data.ai.AiProvider
 import com.zainotes.app.data.model.CardSize
@@ -49,7 +50,9 @@ data class AppSettingsSnapshot(
     val aiSelectedModels: Map<String, String> = emptyMap(),
     val aiFetchedModels: Map<String, List<String>> = emptyMap(),
     val aiCustomBaseUrl: String = "https://api.openai.com/v1",
-    val aiMemories: List<AiMemoryItem> = emptyList()
+    val aiMemories: List<AiMemoryItem> = emptyList(),
+    val aiChatSessions: List<AiChatSession> = emptyList(),
+    val activeAiChatSessionId: String = ""
 ) {
     val activeAiProvider: AiProvider
         get() = AiProvider.fromId(aiProviderId)
@@ -94,6 +97,8 @@ class SettingsRepository(private val context: Context) {
         val AI_FETCHED_MODELS_JSON = stringPreferencesKey("ai_fetched_models_json")
         val AI_CUSTOM_BASE_URL = stringPreferencesKey("ai_custom_base_url")
         val AI_MEMORIES_JSON = stringPreferencesKey("ai_memories_json")
+        val AI_CHAT_SESSIONS_JSON = stringPreferencesKey("ai_chat_sessions_json")
+        val ACTIVE_AI_CHAT_SESSION_ID = stringPreferencesKey("active_ai_chat_session_id")
     }
 
     val settingsFlow: Flow<AppSettingsSnapshot> = context.dataStore.data.map { preferences ->
@@ -138,6 +143,14 @@ class SettingsRepository(private val context: Context) {
             emptyList()
         }
 
+        val chatSessionsList: List<AiChatSession> = try {
+            val json = preferences[PreferencesKeys.AI_CHAT_SESSIONS_JSON]
+            if (json.isNullOrBlank()) emptyList()
+            else gson.fromJson(json, object : TypeToken<List<AiChatSession>>() {}.type) ?: emptyList()
+        } catch (_: Exception) {
+            emptyList()
+        }
+
         AppSettingsSnapshot(
             themeMode = resolvedTheme,
             dynamicColor = preferences[PreferencesKeys.DYNAMIC_COLOR] ?: true,
@@ -159,7 +172,9 @@ class SettingsRepository(private val context: Context) {
             aiSelectedModels = selectedModelsMap,
             aiFetchedModels = fetchedModelsMap,
             aiCustomBaseUrl = preferences[PreferencesKeys.AI_CUSTOM_BASE_URL] ?: "https://api.openai.com/v1",
-            aiMemories = memoriesList
+            aiMemories = memoriesList,
+            aiChatSessions = chatSessionsList,
+            activeAiChatSessionId = preferences[PreferencesKeys.ACTIVE_AI_CHAT_SESSION_ID] ?: ""
         )
     }
 
@@ -291,6 +306,19 @@ class SettingsRepository(private val context: Context) {
 
     suspend fun setAiMemories(memories: List<AiMemoryItem>) {
         context.dataStore.edit { it[PreferencesKeys.AI_MEMORIES_JSON] = gson.toJson(memories) }
+    }
+
+    suspend fun setAiChatSessions(sessions: List<AiChatSession>, activeSessionId: String? = null) {
+        context.dataStore.edit { prefs ->
+            prefs[PreferencesKeys.AI_CHAT_SESSIONS_JSON] = gson.toJson(sessions)
+            if (activeSessionId != null) {
+                prefs[PreferencesKeys.ACTIVE_AI_CHAT_SESSION_ID] = activeSessionId
+            }
+        }
+    }
+
+    suspend fun setActiveAiChatSessionId(sessionId: String) {
+        context.dataStore.edit { it[PreferencesKeys.ACTIVE_AI_CHAT_SESSION_ID] = sessionId }
     }
 
     suspend fun resetToDefaults() {
