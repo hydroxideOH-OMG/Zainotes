@@ -4,6 +4,12 @@
  */
 package com.zainotes.app.ui.screens.home
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -22,25 +28,28 @@ import androidx.compose.foundation.lazy.staggeredgrid.StaggeredGridCells
 import androidx.compose.foundation.lazy.staggeredgrid.StaggeredGridItemSpan
 import androidx.compose.foundation.lazy.staggeredgrid.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.CheckCircleOutline
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.DashboardCustomize
 import androidx.compose.material.icons.filled.EditNote
 import androidx.compose.material.icons.filled.GridView
 import androidx.compose.material.icons.filled.PushPin
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.ViewAgenda
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
-import androidx.compose.material3.FloatingActionButton
-import androidx.compose.material3.FloatingActionButtonDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
@@ -53,15 +62,18 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.zainotes.app.data.model.CardSize
+import com.zainotes.app.data.preferences.AppSettingsSnapshot
 import com.zainotes.app.ui.components.NoteCard
+import com.zainotes.app.ui.theme.ExpressiveMotion
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 fun HomeScreen(
     viewModel: HomeViewModel,
     onNoteClick: (Long) -> Unit,
     onNewNoteClick: () -> Unit,
     onNavigateToSettings: () -> Unit,
+    settings: AppSettingsSnapshot = AppSettingsSnapshot(),
     modifier: Modifier = Modifier
 ) {
     val state by viewModel.uiState.collectAsState()
@@ -75,19 +87,36 @@ fun HomeScreen(
                         Text(
                             text = "Zainotes",
                             style = MaterialTheme.typography.titleLarge,
-                            fontWeight = FontWeight.Bold
+                            fontWeight = FontWeight.ExtraBold
                         )
                         if (state.totalCount > 0) {
-                            Spacer(Modifier.width(8.dp))
-                            Text(
-                                text = "· ${state.totalCount}",
-                                style = MaterialTheme.typography.titleMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
+                            Spacer(Modifier.width(10.dp))
+                            Surface(
+                                shape = CircleShape,
+                                color = MaterialTheme.colorScheme.secondaryContainer
+                            ) {
+                                Text(
+                                    text = "${state.totalCount} notes",
+                                    style = MaterialTheme.typography.labelMedium,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = MaterialTheme.colorScheme.onSecondaryContainer,
+                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
+                                )
+                            }
                         }
                     }
                 },
                 actions = {
+                    IconButton(
+                        onClick = viewModel::toggleSearchActive,
+                        modifier = Modifier.size(48.dp)
+                    ) {
+                        Icon(
+                            imageVector = if (state.isSearchActive) Icons.Default.Close else Icons.Default.Search,
+                            contentDescription = if (state.isSearchActive) "Close search" else "Search notes",
+                            tint = if (state.isSearchActive) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
                     IconButton(
                         onClick = viewModel::toggleFreeformGrid,
                         modifier = Modifier.size(48.dp)
@@ -110,25 +139,55 @@ fun HomeScreen(
                 .fillMaxSize()
                 .padding(insets)
         ) {
-            // Header & Expressive Filter Chips Row (No Search bar)
+            // Header, Collapsible Expressive Search Bar & Filter Chips
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 20.dp, vertical = 4.dp)
+                    .padding(horizontal = 20.dp, vertical = 2.dp)
             ) {
                 Text(
-                    text = "Your canvas",
+                    text = "Your expressive canvas",
                     style = MaterialTheme.typography.headlineMedium,
                     fontWeight = FontWeight.Bold
                 )
                 Text(
-                    text = if (state.totalCount == 0) "A quiet, offline space for your thoughts."
-                    else if (state.isFreeformGrid) "Freeform sizing active · tap any checklist to complete"
-                    else "Tap a task to check off · tap or hold card to resize",
+                    text = when {
+                        state.totalCount == 0 -> "A quiet, 100% offline space for your thoughts and tasks."
+                        state.openTasksTotal > 0 -> "${state.openTasksTotal} open tasks across ${state.tasksCount} checklists · tap to complete"
+                        state.isFreeformGrid -> "Freeform sizing active · cards expand to full content"
+                        else -> "Tap a task to check off · hold any card for colors & scenes"
+                    },
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(top = 2.dp, bottom = 12.dp)
+                    modifier = Modifier.padding(top = 2.dp, bottom = 10.dp)
                 )
+
+                AnimatedVisibility(
+                    visible = state.isSearchActive,
+                    enter = expandVertically(ExpressiveMotion.spatialFastSpec()) + fadeIn(),
+                    exit = shrinkVertically(ExpressiveMotion.snappySpec()) + fadeOut()
+                ) {
+                    OutlinedTextField(
+                        value = state.searchQuery,
+                        onValueChange = viewModel::onSearchQueryChanged,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(bottom = 10.dp),
+                        placeholder = { Text("Search titles, tasks, or note blocks...") },
+                        leadingIcon = {
+                            Icon(Icons.Default.Search, contentDescription = null)
+                        },
+                        trailingIcon = {
+                            if (state.searchQuery.isNotEmpty()) {
+                                IconButton(onClick = { viewModel.onSearchQueryChanged("") }) {
+                                    Icon(Icons.Default.Close, contentDescription = "Clear search")
+                                }
+                            }
+                        },
+                        singleLine = true,
+                        shape = CircleShape
+                    )
+                }
 
                 // Expressive Filter Chips
                 Row(
@@ -200,12 +259,13 @@ fun HomeScreen(
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.Center
                 ) {
-                    val isFiltered = state.activeFilter != HomeFilter.ALL
+                    val isFiltered = state.activeFilter != HomeFilter.ALL || state.searchQuery.isNotBlank()
                     Icon(
-                        imageVector = when (state.activeFilter) {
-                            HomeFilter.TASKS -> Icons.Default.CheckCircleOutline
-                            HomeFilter.PINNED -> Icons.Default.PushPin
-                            HomeFilter.ALL -> Icons.Default.EditNote
+                        imageVector = when {
+                            state.searchQuery.isNotBlank() -> Icons.Default.Search
+                            state.activeFilter == HomeFilter.TASKS -> Icons.Default.CheckCircleOutline
+                            state.activeFilter == HomeFilter.PINNED -> Icons.Default.PushPin
+                            else -> Icons.Default.EditNote
                         },
                         contentDescription = null,
                         tint = MaterialTheme.colorScheme.primary,
@@ -213,14 +273,21 @@ fun HomeScreen(
                     )
                     Spacer(Modifier.height(16.dp))
                     Text(
-                        text = if (isFiltered) "No notes in this view" else "Start with one thought",
+                        text = when {
+                            state.searchQuery.isNotBlank() -> "No matching notes"
+                            isFiltered -> "No notes in this view"
+                            else -> "Start with one thought"
+                        },
                         style = MaterialTheme.typography.headlineSmall,
                         fontWeight = FontWeight.SemiBold,
                         textAlign = TextAlign.Center
                     )
                     Text(
-                        text = if (isFiltered) "Switch back to All notes or create a new note for this section."
-                        else "Create notes, checklists, and bulletin cards with flexible organic sizing.",
+                        text = when {
+                            state.searchQuery.isNotBlank() -> "Try another search keyword or clear the search filter."
+                            isFiltered -> "Switch back to All notes or create a new note for this section."
+                            else -> "Create notes, checklists, and bulletin cards with vibrant colors and illustrated scenes."
+                        },
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         textAlign = TextAlign.Center,
@@ -228,9 +295,12 @@ fun HomeScreen(
                     )
                     if (isFiltered) {
                         FilledTonalButton(
-                            onClick = { viewModel.onFilterChanged(HomeFilter.ALL) }
+                            onClick = {
+                                viewModel.onFilterChanged(HomeFilter.ALL)
+                                viewModel.onSearchQueryChanged("")
+                            }
                         ) {
-                            Text("View all notes")
+                            Text("Show all notes")
                         }
                     } else {
                         FilledTonalButton(
@@ -244,19 +314,32 @@ fun HomeScreen(
                 }
 
                 else -> {
-                    val minCellWidth = if (state.isFreeformGrid) 240.dp else 176.dp
+                    val gridSpacing = if (settings.compactCardSpacing) 8.dp else 12.dp
+                    val columnsConfig = when {
+                        settings.gridColumns == 1 -> StaggeredGridCells.Fixed(1)
+                        state.isFreeformGrid -> StaggeredGridCells.Adaptive(minSize = 240.dp)
+                        else -> StaggeredGridCells.Adaptive(minSize = 172.dp)
+                    }
+
                     LazyVerticalStaggeredGrid(
-                        columns = StaggeredGridCells.Adaptive(minSize = minCellWidth),
-                        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 88.dp),
-                        horizontalArrangement = Arrangement.spacedBy(12.dp),
-                        verticalItemSpacing = 12.dp,
+                        columns = columnsConfig,
+                        contentPadding = PaddingValues(
+                            start = 16.dp,
+                            end = 16.dp,
+                            top = 12.dp,
+                            bottom = 104.dp
+                        ),
+                        horizontalArrangement = Arrangement.spacedBy(gridSpacing),
+                        verticalItemSpacing = gridSpacing,
                         modifier = Modifier.fillMaxSize()
                     ) {
                         items(
                             items = state.notes,
                             key = { it.id },
                             span = { note ->
-                                if (state.isFreeformGrid) {
+                                if (settings.gridColumns == 1) {
+                                    StaggeredGridItemSpan.FullLine
+                                } else if (state.isFreeformGrid) {
                                     if (note.cardSize == CardSize.WIDE || note.cardSize == CardSize.HERO || note.blocks.size > 5) {
                                         StaggeredGridItemSpan.FullLine
                                     } else {
@@ -279,14 +362,22 @@ fun HomeScreen(
 
                             NoteCard(
                                 note = effectiveNote,
+                                settings = settings,
                                 onClick = { onNoteClick(note.id) },
                                 onTaskToggle = { blockId, checked ->
                                     viewModel.toggleTaskChecked(note.id, blockId, checked)
                                 },
                                 onCardSizeChange = { viewModel.updateCardSize(note.id, it) },
                                 onColorChange = { viewModel.updateColor(note.id, it) },
+                                onBackgroundThemeChange = { viewModel.updateBackgroundTheme(note.id, it) },
+                                onDuplicate = { viewModel.duplicateNote(note) },
                                 onTogglePin = { viewModel.togglePin(note) },
-                                onDelete = { viewModel.deleteNote(note) }
+                                onDelete = { viewModel.deleteNote(note) },
+                                modifier = Modifier.animateItem(
+                                    fadeInSpec = ExpressiveMotion.snappySpec(),
+                                    placementSpec = ExpressiveMotion.spatialDefaultSpec(),
+                                    fadeOutSpec = ExpressiveMotion.snappySpec()
+                                )
                             )
                         }
                     }

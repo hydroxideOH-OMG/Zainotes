@@ -5,6 +5,10 @@
 
 package com.zainotes.app.ui.components
 
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.spring
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -12,7 +16,9 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -21,6 +27,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -29,8 +36,10 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.SheetState
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -49,8 +58,8 @@ import com.zainotes.app.data.model.NoteBackgroundTheme
 import com.zainotes.app.ui.theme.NoteColor
 
 /**
- * Unified Modal Bottom Sheet for selecting Vibrant Note Colors and
- * Google Keep Background Themes & Illustrations.
+ * Unified Material 3 Expressive Modal Bottom Sheet for selecting Vibrant Note Colors and
+ * Google Keep Background Themes & Illustrations, featuring live miniature canvas previews.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -63,6 +72,9 @@ fun NoteThemePickerSheet(
     onDismissRequest: () -> Unit
 ) {
     val isDark = MaterialTheme.colorScheme.background.luminance() < 0.5f
+    val activeNoteColor = NoteColor.fromId(selectedColorId)
+    val previewCardBg = activeNoteColor.containerColor(isDark, MaterialTheme.colorScheme.surfaceContainerHigh)
+    val previewCardContent = activeNoteColor.contentColor(isDark, MaterialTheme.colorScheme.onSurface)
 
     ModalBottomSheet(
         onDismissRequest = onDismissRequest,
@@ -73,21 +85,35 @@ fun NoteThemePickerSheet(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(bottom = 36.dp, top = 8.dp)
+                .padding(bottom = 36.dp, top = 4.dp)
         ) {
             // Header
-            Text(
-                text = "Note Theme & Styling",
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold,
-                modifier = Modifier.padding(horizontal = 24.dp)
-            )
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 24.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Column {
+                    Text(
+                        text = "Canvas Color & Scene",
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Text(
+                        text = "Pair expressive surface tones with illustrated backdrops",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
 
-            Spacer(modifier = Modifier.height(16.dp))
+            Spacer(modifier = Modifier.height(18.dp))
 
             // 1. Vibrant Color Swatches Section
             Text(
-                text = "Vibrant Color",
+                text = "Vibrant Surface Color",
                 style = MaterialTheme.typography.labelLarge,
                 fontWeight = FontWeight.SemiBold,
                 color = MaterialTheme.colorScheme.primary,
@@ -105,6 +131,15 @@ fun NoteThemePickerSheet(
                     val bgColor = noteColor.containerColor(isDark, MaterialTheme.colorScheme.surfaceContainerHigh)
                     val contentColor = noteColor.contentColor(isDark, MaterialTheme.colorScheme.onSurface)
 
+                    val cornerRadius by animateDpAsState(
+                        targetValue = if (isSelected) 18.dp else 28.dp,
+                        animationSpec = spring(
+                            dampingRatio = Spring.DampingRatioLowBouncy,
+                            stiffness = Spring.StiffnessMedium
+                        ),
+                        label = "colorSwatchShape"
+                    )
+
                     Column(
                         horizontalAlignment = Alignment.CenterHorizontally,
                         modifier = Modifier
@@ -117,13 +152,13 @@ fun NoteThemePickerSheet(
                     ) {
                         Box(
                             modifier = Modifier
-                                .size(52.dp)
-                                .clip(CircleShape)
+                                .size(54.dp)
+                                .clip(RoundedCornerShape(cornerRadius))
                                 .background(bgColor)
                                 .border(
                                     width = if (isSelected) 3.dp else 1.dp,
                                     color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant,
-                                    shape = CircleShape
+                                    shape = RoundedCornerShape(cornerRadius)
                                 ),
                             contentAlignment = Alignment.Center
                         ) {
@@ -154,9 +189,9 @@ fun NoteThemePickerSheet(
             HorizontalDivider(modifier = Modifier.padding(horizontal = 24.dp))
             Spacer(modifier = Modifier.height(14.dp))
 
-            // 2. Google Keep Background Themes & Illustrations Section
+            // 2. Background Themes & Live Miniature Illustrations Section
             Text(
-                text = "Background Image & Pattern",
+                text = "Background Illustration & Pattern",
                 style = MaterialTheme.typography.labelLarge,
                 fontWeight = FontWeight.SemiBold,
                 color = MaterialTheme.colorScheme.primary,
@@ -167,10 +202,14 @@ fun NoteThemePickerSheet(
 
             LazyRow(
                 contentPadding = PaddingValues(horizontal = 20.dp),
-                horizontalArrangement = Arrangement.spacedBy(14.dp)
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 items(NoteBackgroundTheme.entries) { theme ->
                     val isSelected = theme.id.equals(selectedThemeId, ignoreCase = true)
+                    val borderColor by animateColorAsState(
+                        targetValue = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant,
+                        label = "themeBorderColor"
+                    )
 
                     Column(
                         horizontalAlignment = Alignment.CenterHorizontally,
@@ -182,27 +221,44 @@ fun NoteThemePickerSheet(
                             }
                             .clickable { onThemeSelected(theme.id) }
                     ) {
+                        // Miniature live preview card showing actual background artwork
                         Box(
                             modifier = Modifier
-                                .size(52.dp)
-                                .clip(CircleShape)
-                                .background(
-                                    if (isSelected) MaterialTheme.colorScheme.secondaryContainer
-                                    else MaterialTheme.colorScheme.surfaceContainerHigh
-                                )
+                                .size(width = 84.dp, height = 68.dp)
+                                .clip(RoundedCornerShape(18.dp))
+                                .background(previewCardBg)
                                 .border(
                                     width = if (isSelected) 3.dp else 1.dp,
-                                    color = if (isSelected) MaterialTheme.colorScheme.secondary else MaterialTheme.colorScheme.outlineVariant,
-                                    shape = CircleShape
-                                ),
-                            contentAlignment = Alignment.Center
+                                    color = borderColor,
+                                    shape = RoundedCornerShape(18.dp)
+                                )
                         ) {
-                            Icon(
-                                imageVector = theme.icon,
-                                contentDescription = null,
-                                tint = if (isSelected) MaterialTheme.colorScheme.onSecondaryContainer else MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = Modifier.size(26.dp)
-                            )
+                            if (theme != NoteBackgroundTheme.NONE) {
+                                NoteBackgroundRenderer(
+                                    theme = theme,
+                                    tint = previewCardContent,
+                                    modifier = Modifier.fillMaxSize()
+                                )
+                            }
+
+                            // Top-left icon badge
+                            Surface(
+                                shape = CircleShape,
+                                color = if (isSelected) MaterialTheme.colorScheme.primary else previewCardContent.copy(alpha = 0.14f),
+                                modifier = Modifier
+                                    .padding(6.dp)
+                                    .size(24.dp)
+                                    .align(Alignment.TopStart)
+                            ) {
+                                Box(contentAlignment = Alignment.Center) {
+                                    Icon(
+                                        imageVector = if (isSelected) Icons.Default.Check else theme.icon,
+                                        contentDescription = null,
+                                        tint = if (isSelected) MaterialTheme.colorScheme.onPrimary else previewCardContent,
+                                        modifier = Modifier.size(14.dp)
+                                    )
+                                }
+                            }
                         }
 
                         Spacer(modifier = Modifier.height(6.dp))
@@ -211,11 +267,11 @@ fun NoteThemePickerSheet(
                             text = theme.displayName,
                             style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.sp),
                             fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
-                            color = if (isSelected) MaterialTheme.colorScheme.secondary else MaterialTheme.colorScheme.onSurfaceVariant,
+                            color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
                             textAlign = TextAlign.Center,
-                            modifier = Modifier.width(60.dp)
+                            modifier = Modifier.width(84.dp)
                         )
                     }
                 }

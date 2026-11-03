@@ -28,13 +28,21 @@ data class SettingsUiState(
     val themeMode: ThemeMode = ThemeMode.SYSTEM,
     val dynamicColor: Boolean = true,
     val amoledPureBlackCards: Boolean = false,
+    val showCardBackgrounds: Boolean = true,
     val defaultCardSize: CardSize = CardSize.STANDARD,
+    val defaultNoteColor: String = "default",
+    val defaultBackgroundTheme: String = "none",
     val gridColumns: Int = 2,
+    val compactCardSpacing: Boolean = false,
     val showTaskProgress: Boolean = true,
     val showNoteMetadata: Boolean = true,
     val confirmNoteDelete: Boolean = true,
     val strikethroughCompleted: Boolean = true,
+    val moveCheckedToBottom: Boolean = false,
+    val autoFocusNewNote: Boolean = true,
     val totalNotesCount: Int = 0,
+    val checklistsCount: Int = 0,
+    val pinnedCount: Int = 0,
     val backupMessage: String? = null
 )
 
@@ -47,37 +55,29 @@ class SettingsViewModel(
     private val _message = MutableStateFlow<String?>(null)
 
     val uiState: StateFlow<SettingsUiState> = combine(
-        combine(
-            settingsRepository.themeMode,
-            settingsRepository.dynamicColor,
-            settingsRepository.amoledPureBlackCards,
-            settingsRepository.defaultCardSize,
-            settingsRepository.gridColumns
-        ) { theme, dynamic, amoledCards, cardSize, cols ->
-            FiveSettings(theme, dynamic, amoledCards, cardSize, cols)
-        },
-        combine(
-            settingsRepository.showTaskProgress,
-            settingsRepository.showNoteMetadata,
-            settingsRepository.confirmNoteDelete,
-            settingsRepository.strikethroughCompleted,
-            notesRepository.activeNotes
-        ) { progress, meta, confirmDel, strike, notes ->
-            FiveDetails(progress, meta, confirmDel, strike, notes.size)
-        },
+        settingsRepository.settingsFlow,
+        notesRepository.activeNotes,
         _message
-    ) { s1, s2, msg ->
+    ) { snapshot, notes, msg ->
         SettingsUiState(
-            themeMode = s1.theme,
-            dynamicColor = s1.dynamic,
-            amoledPureBlackCards = s1.amoledCards,
-            defaultCardSize = s1.cardSize,
-            gridColumns = s1.cols,
-            showTaskProgress = s2.progress,
-            showNoteMetadata = s2.meta,
-            confirmNoteDelete = s2.confirmDel,
-            strikethroughCompleted = s2.strike,
-            totalNotesCount = s2.noteCount,
+            themeMode = snapshot.themeMode,
+            dynamicColor = snapshot.dynamicColor,
+            amoledPureBlackCards = snapshot.amoledPureBlackCards,
+            showCardBackgrounds = snapshot.showCardBackgrounds,
+            defaultCardSize = snapshot.defaultCardSize,
+            defaultNoteColor = snapshot.defaultNoteColor,
+            defaultBackgroundTheme = snapshot.defaultBackgroundTheme,
+            gridColumns = snapshot.gridColumns,
+            compactCardSpacing = snapshot.compactCardSpacing,
+            showTaskProgress = snapshot.showTaskProgress,
+            showNoteMetadata = snapshot.showNoteMetadata,
+            confirmNoteDelete = snapshot.confirmNoteDelete,
+            strikethroughCompleted = snapshot.strikethroughCompleted,
+            moveCheckedToBottom = snapshot.moveCheckedToBottom,
+            autoFocusNewNote = snapshot.autoFocusNewNote,
+            totalNotesCount = notes.size,
+            checklistsCount = notes.count { it.totalTasksCount > 0 },
+            pinnedCount = notes.count { it.isPinned },
             backupMessage = msg
         )
     }.stateIn(
@@ -86,73 +86,70 @@ class SettingsViewModel(
         initialValue = SettingsUiState()
     )
 
-    private data class FiveSettings(
-        val theme: ThemeMode,
-        val dynamic: Boolean,
-        val amoledCards: Boolean,
-        val cardSize: CardSize,
-        val cols: Int
-    )
-
-    private data class FiveDetails(
-        val progress: Boolean,
-        val meta: Boolean,
-        val confirmDel: Boolean,
-        val strike: Boolean,
-        val noteCount: Int
-    )
-
     fun setThemeMode(mode: ThemeMode) {
-        viewModelScope.launch {
-            settingsRepository.setThemeMode(mode)
-        }
+        viewModelScope.launch { settingsRepository.setThemeMode(mode) }
     }
 
     fun setDynamicColor(enabled: Boolean) {
-        viewModelScope.launch {
-            settingsRepository.setDynamicColor(enabled)
-        }
+        viewModelScope.launch { settingsRepository.setDynamicColor(enabled) }
     }
 
     fun setAmoledPureBlackCards(enabled: Boolean) {
-        viewModelScope.launch {
-            settingsRepository.setAmoledPureBlackCards(enabled)
-        }
+        viewModelScope.launch { settingsRepository.setAmoledPureBlackCards(enabled) }
+    }
+
+    fun setShowCardBackgrounds(enabled: Boolean) {
+        viewModelScope.launch { settingsRepository.setShowCardBackgrounds(enabled) }
     }
 
     fun setDefaultCardSize(size: CardSize) {
-        viewModelScope.launch {
-            settingsRepository.setDefaultCardSize(size)
-        }
+        viewModelScope.launch { settingsRepository.setDefaultCardSize(size) }
+    }
+
+    fun setDefaultNoteColor(colorId: String) {
+        viewModelScope.launch { settingsRepository.setDefaultNoteColor(colorId) }
+    }
+
+    fun setDefaultBackgroundTheme(themeId: String) {
+        viewModelScope.launch { settingsRepository.setDefaultBackgroundTheme(themeId) }
     }
 
     fun setGridColumns(columns: Int) {
-        viewModelScope.launch {
-            settingsRepository.setGridColumns(columns)
-        }
+        viewModelScope.launch { settingsRepository.setGridColumns(columns) }
+    }
+
+    fun setCompactCardSpacing(enabled: Boolean) {
+        viewModelScope.launch { settingsRepository.setCompactCardSpacing(enabled) }
     }
 
     fun setShowTaskProgress(enabled: Boolean) {
-        viewModelScope.launch {
-            settingsRepository.setShowTaskProgress(enabled)
-        }
+        viewModelScope.launch { settingsRepository.setShowTaskProgress(enabled) }
     }
 
     fun setShowNoteMetadata(enabled: Boolean) {
-        viewModelScope.launch {
-            settingsRepository.setShowNoteMetadata(enabled)
-        }
+        viewModelScope.launch { settingsRepository.setShowNoteMetadata(enabled) }
     }
 
     fun setConfirmNoteDelete(enabled: Boolean) {
-        viewModelScope.launch {
-            settingsRepository.setConfirmNoteDelete(enabled)
-        }
+        viewModelScope.launch { settingsRepository.setConfirmNoteDelete(enabled) }
     }
 
     fun setStrikethroughCompleted(enabled: Boolean) {
+        viewModelScope.launch { settingsRepository.setStrikethroughCompleted(enabled) }
+    }
+
+    fun setMoveCheckedToBottom(enabled: Boolean) {
+        viewModelScope.launch { settingsRepository.setMoveCheckedToBottom(enabled) }
+    }
+
+    fun setAutoFocusNewNote(enabled: Boolean) {
+        viewModelScope.launch { settingsRepository.setAutoFocusNewNote(enabled) }
+    }
+
+    fun resetSettingsToDefaults() {
         viewModelScope.launch {
-            settingsRepository.setStrikethroughCompleted(enabled)
+            settingsRepository.resetToDefaults()
+            _message.value = "All preferences restored to defaults"
         }
     }
 

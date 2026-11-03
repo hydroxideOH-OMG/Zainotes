@@ -64,6 +64,9 @@ interface NoteDao {
     @Query("UPDATE notes SET colorId = :colorId, updatedAt = :updatedAt WHERE id = :id")
     suspend fun updateColor(id: Long, colorId: String, updatedAt: Long = System.currentTimeMillis())
 
+    @Query("UPDATE notes SET backgroundTheme = :backgroundTheme, updatedAt = :updatedAt WHERE id = :id")
+    suspend fun updateBackgroundTheme(id: Long, backgroundTheme: String, updatedAt: Long = System.currentTimeMillis())
+
     @Query("UPDATE notes SET isPinned = :isPinned, updatedAt = :updatedAt WHERE id = :id")
     suspend fun updatePinStatus(id: Long, isPinned: Boolean, updatedAt: Long = System.currentTimeMillis())
 

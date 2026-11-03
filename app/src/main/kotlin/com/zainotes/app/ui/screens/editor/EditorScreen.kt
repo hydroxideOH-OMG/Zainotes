@@ -8,6 +8,7 @@ package com.zainotes.app.ui.screens.editor
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -15,11 +16,15 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.PushPin
 import androidx.compose.material.icons.outlined.PushPin
 import androidx.compose.material3.AlertDialog
@@ -28,7 +33,9 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -40,6 +47,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
@@ -85,8 +93,9 @@ fun EditorScreen(
     var showThemePicker by remember { mutableStateOf(false) }
     var showSizePicker by remember { mutableStateOf(false) }
 
-    val themeSheetState = rememberModalBottomSheetState()
-    val sizeSheetState = rememberModalBottomSheetState()
+    val themeSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    val sizeSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    val activeTheme = NoteBackgroundTheme.fromId(state.backgroundTheme)
 
     Scaffold(
         modifier = modifier
@@ -95,10 +104,40 @@ fun EditorScreen(
         topBar = {
             TopAppBar(
                 title = {
-                    Text(
-                        text = if (state.title.isBlank()) "New note" else "Edit note",
-                        style = MaterialTheme.typography.titleMedium
-                    )
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            text = if (state.title.isBlank()) "New note" else "Edit note",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.SemiBold,
+                            color = animatedContentColor
+                        )
+                        if (activeTheme != NoteBackgroundTheme.NONE) {
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Surface(
+                                onClick = { showThemePicker = true },
+                                shape = CircleShape,
+                                color = animatedContentColor.copy(alpha = 0.14f)
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = activeTheme.icon,
+                                        contentDescription = null,
+                                        tint = animatedContentColor,
+                                        modifier = Modifier.size(14.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text(
+                                        text = activeTheme.displayName,
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = animatedContentColor
+                                    )
+                                }
+                            }
+                        }
+                    }
                 },
                 navigationIcon = {
                     IconButton(onClick = onNavigateBack) {
@@ -110,22 +149,39 @@ fun EditorScreen(
                     }
                 },
                 actions = {
+                    // Quick Theme & Scene Button in Top Bar
+                    IconButton(onClick = { showThemePicker = true }) {
+                        Icon(
+                            imageVector = Icons.Default.Palette,
+                            contentDescription = "Canvas Color & Scene",
+                            tint = animatedContentColor.copy(alpha = 0.85f)
+                        )
+                    }
+
                     // Pin Button
                     IconButton(onClick = { viewModel.togglePin() }) {
                         Icon(
                             imageVector = if (state.isPinned) Icons.Filled.PushPin else Icons.Outlined.PushPin,
                             contentDescription = "Pin Note",
-                            tint = if (state.isPinned) MaterialTheme.colorScheme.primary else animatedContentColor.copy(alpha = 0.7f)
+                            tint = if (state.isPinned) MaterialTheme.colorScheme.primary else animatedContentColor.copy(alpha = 0.75f)
                         )
                     }
 
                     // Delete Button
                     if (state.noteId > 0) {
-                        IconButton(onClick = { showDeleteDialog = true }) {
+                        IconButton(
+                            onClick = {
+                                if (state.confirmNoteDelete) {
+                                    showDeleteDialog = true
+                                } else {
+                                    viewModel.deleteNote(onNavigateBack)
+                                }
+                            }
+                        ) {
                             Icon(
                                 imageVector = Icons.Default.Delete,
                                 contentDescription = "Delete Note",
-                                tint = animatedContentColor.copy(alpha = 0.7f)
+                                tint = animatedContentColor.copy(alpha = 0.75f)
                             )
                         }
                     }
@@ -136,13 +192,24 @@ fun EditorScreen(
             )
         },
         bottomBar = {
-            // Floating bottom navigation dock for the note editor:
-            // Left circle tick button (Done & save) + right long pill with action buttons
+            // Dual-tier Floating Bottom Navigation Dock for the note editor:
+            // Upper floating pill: Rich Text Formatting (Bold, Italic, Underline, Strike, Highlight, Code, Size, Align, Clear)
+            // Lower floating dock: Left circle tick button (Done & save) + right long pill with block/canvas buttons
             EditorFloatingDock(
+                activeBlock = state.activeBlock,
                 onDone = onNavigateBack,
                 onAddBlock = { type -> viewModel.addBlock(type) },
                 onOpenThemePicker = { showThemePicker = true },
                 onOpenSizePicker = { showSizePicker = true },
+                onToggleBold = viewModel::toggleBold,
+                onToggleItalic = viewModel::toggleItalic,
+                onToggleUnderline = viewModel::toggleUnderline,
+                onToggleStrikethrough = viewModel::toggleStrikethrough,
+                onToggleHighlight = viewModel::toggleHighlight,
+                onToggleMonospace = viewModel::toggleMonospace,
+                onCycleTextSize = viewModel::cycleTextSize,
+                onCycleTextAlign = viewModel::cycleTextAlign,
+                onClearFormatting = viewModel::clearBlockFormatting,
                 modifier = Modifier.navigationBarsPadding()
             )
         },
@@ -153,9 +220,9 @@ fun EditorScreen(
                 .fillMaxSize()
                 .padding(paddingValues)
         ) {
-            // Render native vector background theme/illustration or pattern
+            // Render native vector background theme/illustration or pattern across the entire editor canvas
             NoteBackgroundRenderer(
-                theme = NoteBackgroundTheme.fromId(state.backgroundTheme),
+                theme = activeTheme,
                 tint = animatedContentColor,
                 modifier = Modifier.fillMaxSize()
             )
@@ -168,12 +235,22 @@ fun EditorScreen(
                 OutlinedTextField(
                     value = state.title,
                     onValueChange = viewModel::updateTitle,
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp),
-                    textStyle = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.SemiBold),
-                    label = { Text("Note title") },
-                    placeholder = { Text("Give this note a name") },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 4.dp, vertical = 4.dp),
+                    textStyle = MaterialTheme.typography.headlineSmall.copy(
+                        fontWeight = FontWeight.Bold,
+                        color = animatedContentColor
+                    ),
+                    label = { Text("Note title", color = animatedContentColor.copy(alpha = 0.75f)) },
+                    placeholder = { Text("Give this note a name...", color = animatedContentColor.copy(alpha = 0.45f)) },
                     singleLine = true,
-                    shape = MaterialTheme.shapes.large
+                    shape = MaterialTheme.shapes.large,
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = MaterialTheme.colorScheme.primary,
+                        unfocusedBorderColor = animatedContentColor.copy(alpha = 0.25f),
+                        cursorColor = MaterialTheme.colorScheme.primary
+                    )
                 )
 
                 Spacer(modifier = Modifier.height(8.dp))
@@ -192,6 +269,9 @@ fun EditorScreen(
                             block = block,
                             index = index,
                             totalBlocks = state.blocks.size,
+                            isFocused = state.activeBlock?.id == block.id,
+                            strikethroughCompleted = state.strikethroughCompleted,
+                            onFocused = { viewModel.setActiveBlock(block.id) },
                             onContentChange = { newText -> viewModel.updateBlockContent(block.id, newText) },
                             onTaskToggle = { viewModel.toggleTaskChecked(block.id) },
                             onConvertType = { newType -> viewModel.convertBlockType(block.id, newType) },
@@ -199,7 +279,12 @@ fun EditorScreen(
                             onMoveUp = { viewModel.moveBlockUp(index) },
                             onMoveDown = { viewModel.moveBlockDown(index) },
                             onEnterPressed = {
-                                val nextType = if (block.type == BlockType.NUMBERED) BlockType.NUMBERED else BlockType.TEXT
+                                val nextType = when (block.type) {
+                                    BlockType.NUMBERED -> BlockType.NUMBERED
+                                    BlockType.BULLET -> BlockType.BULLET
+                                    BlockType.TASK -> BlockType.TASK
+                                    else -> BlockType.TEXT
+                                }
                                 viewModel.addBlock(nextType, index + 1)
                             },
                             contentColor = animatedContentColor,
@@ -208,7 +293,7 @@ fun EditorScreen(
                     }
 
                     item {
-                        Spacer(modifier = Modifier.height(80.dp))
+                        Spacer(modifier = Modifier.height(148.dp))
                     }
                 }
             }
@@ -228,7 +313,7 @@ fun EditorScreen(
                         viewModel.deleteNote(onNavigateBack)
                     }
                 ) {
-                    Text("Delete", color = MaterialTheme.colorScheme.error)
+                    Text("Delete", color = MaterialTheme.colorScheme.error, fontWeight = FontWeight.Bold)
                 }
             },
             dismissButton = {
