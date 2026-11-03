@@ -17,3 +17,19 @@
 *.keystore
 !keystore/release.keystore
 *.jks
+
+# Environment & local secrets
+.env
+.env.*
+!.env.example
+
+# AI assistant artifacts & planning files
+.impeccable/
+.aistudio/
+*.plan.md
+plan.md
+implementation_plan.md
+
+# AI Studio preview server and captured assets
+preview-server.cjs
+public/assets/aistudio/
