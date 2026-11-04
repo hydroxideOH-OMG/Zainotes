@@ -17,7 +17,8 @@
 - 🖤 **Pure AMOLED Black**: True `#000000` pitch black mode across the canvas, cards, floating bottom navigation, editor actions, and dialog sheets for maximum OLED battery savings and contrast.
 - 🤖 **Native AI Assistant & Tools**: Dedicated AI workspace with multi-provider connectivity, customizable endpoints, persistent chat sessions with AI-generated smart session titles, memory management, and contextual note generation.
 - 🏷️ **Note Tags & Organization**: Tag notes with custom colored labels, filter your board instantly by tag pills, and manage categories effortlessly.
-- 🔄 **In-App OTA Updater**: Check for new releases directly within the app, review changelogs, download signed APK updates with live progress, and install in place with one tap.
+- 🧊 **3D Isometric Identity & Themed Icon**: Modern 3D isometric cube branding across all launcher densities with full Material 3 Expressive monochrome adaptive icon support for Android 13+ dynamic wallpaper theming.
+- 🔄 **Refined In-App OTA Updater**: Check for new releases directly within the app, review changelogs, download signed APK updates with live progress, and install in place with one tap.
 - 📸 **Media Attachments**: Seamlessly embed images, audio recordings, and videos directly into notes with dedicated playback controls and full-screen viewers.
 - 🎨 **Custom Theme Accent Colors**: Handcrafted high-contrast accent palettes (Purple, Ocean Blue, Emerald, Rose Pink, Sunset Gold, Coral Red, Aqua Teal, and Indigo) when dynamic wallpaper theming is off.
 - 🖼️ **15 Vector Background Themes**: Beautifully bounded native vector illustrations including Groceries, Food & Cooking, Music, Recipes, Notes, Places, Cinema, Celebration, Storm, Dusk, Flora, Doodles, Ruled Lines, Graph Grid, and Dot Matrix.
@@ -67,7 +68,7 @@
 
 Get the latest signed APK directly from GitHub Releases:
 
-👉 **[Download Zainotes v2.2.0](https://github.com/hydroxideOH-OMG/Zainotes/releases/latest)**
+👉 **[Download Zainotes v3.0.0](https://github.com/hydroxideOH-OMG/Zainotes/releases/latest)**
 
 - **Package Name**: `com.zainotes.app`
 - **Requires**: Android 8.0 (API 26) or newer
@@ -90,6 +91,16 @@ For release builds with full R8 optimization:
 ```bash
 ./gradlew assembleRelease
 ```
+
+### 🖥️ Local Companion & Preview Server
+
+Zainotes includes a lightweight companion server to serve debug builds, test API endpoints, and preview assets locally:
+
+```bash
+bun run dev
+```
+
+The companion server starts on port `3000` (http://localhost:3000) and serves debug APKs directly.
 
 ---
 
