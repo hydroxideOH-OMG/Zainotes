@@ -21,6 +21,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.navigation.compose.rememberNavController
 import com.zainotes.app.ui.navigation.ZainotesNavGraph
+import com.zainotes.app.ui.theme.ThemeAccentColor
 import com.zainotes.app.ui.theme.ThemeMode
 import com.zainotes.app.ui.theme.ZainotesTheme
 
@@ -35,10 +36,12 @@ class MainActivity : ComponentActivity() {
         setContent {
             val themeMode by app.settingsRepository.themeMode.collectAsState(initial = ThemeMode.AMOLED)
             val dynamicColor by app.settingsRepository.dynamicColor.collectAsState(initial = false)
+            val accentColorId by app.settingsRepository.themeAccentColor.collectAsState(initial = ThemeAccentColor.VIOLET.id)
 
             ZainotesTheme(
                 themeMode = themeMode,
-                dynamicColor = dynamicColor
+                dynamicColor = dynamicColor,
+                accentColor = ThemeAccentColor.fromId(accentColorId)
             ) {
                 Surface(
                     modifier = Modifier.fillMaxSize(),
