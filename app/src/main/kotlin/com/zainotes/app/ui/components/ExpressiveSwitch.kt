@@ -205,7 +205,8 @@ fun ExpressiveSwitch(
         )
 
         // State-layer Halo (40dp circle centered on the thumb)
-        if (haloAlpha > 0.01f) {
+        val safeHaloAlpha = haloAlpha.coerceIn(0f, 1f)
+        if (safeHaloAlpha > 0.01f) {
             Box(
                 modifier = Modifier
                     .offset {
@@ -214,18 +215,19 @@ fun ExpressiveSwitch(
                     }
                     .size(40.dp)
                     .clip(CircleShape)
-                    .background(haloColor.copy(alpha = haloAlpha))
+                    .background(haloColor.copy(alpha = safeHaloAlpha))
             )
         }
 
         // Thumb with ✓ (checked) or ✕ (unchecked) icon
+        val safeThumbSize = thumbSize.coerceAtLeast(0.dp)
         Box(
             modifier = Modifier
                 .offset {
-                    val xPx = (thumbCenterX - (thumbSize / 2)).toPx().roundToInt()
+                    val xPx = (thumbCenterX - (safeThumbSize / 2)).toPx().roundToInt()
                     IntOffset(xPx, 0)
                 }
-                .size(thumbSize)
+                .size(safeThumbSize)
                 .clip(CircleShape)
                 .background(thumbColor),
             contentAlignment = Alignment.Center

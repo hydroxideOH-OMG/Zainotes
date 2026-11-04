@@ -385,7 +385,7 @@ fun SettingsScreen(
                                         Box(
                                             modifier = Modifier
                                                 .size(44.dp)
-                                                .clip(RoundedCornerShape(swatchCorner))
+                                                .clip(RoundedCornerShape(swatchCorner.coerceAtLeast(0.dp)))
                                                 .background(accent.swatchColor)
                                                 .border(
                                                     width = if (isSelected) 3.dp else 1.dp,
@@ -394,7 +394,7 @@ fun SettingsScreen(
                                                     } else {
                                                         MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
                                                     },
-                                                    shape = RoundedCornerShape(swatchCorner)
+                                                    shape = RoundedCornerShape(swatchCorner.coerceAtLeast(0.dp))
                                                 ),
                                             contentAlignment = Alignment.Center
                                         ) {
@@ -468,7 +468,7 @@ fun SettingsScreen(
                     containerColor = MaterialTheme.colorScheme.surfaceContainer
                 ),
                 border = if (highlightApiKeyField) {
-                    BorderStroke(apiCardBorderWidth, MaterialTheme.colorScheme.primary)
+                    BorderStroke(apiCardBorderWidth.coerceAtLeast(0.dp), MaterialTheme.colorScheme.primary)
                 } else null,
                 modifier = Modifier
                     .fillMaxWidth()
@@ -1069,10 +1069,10 @@ fun SettingsScreen(
                         ) {
                             Box(contentAlignment = Alignment.Center) {
                                 Image(
-                                    painter = painterResource(id = R.mipmap.ic_launcher),
+                                    painter = painterResource(id = R.drawable.ic_launcher_foreground),
                                     contentDescription = "Zainotes Logo",
                                     modifier = Modifier
-                                        .size(34.dp)
+                                        .size(38.dp)
                                         .clip(RoundedCornerShape(8.dp))
                                 )
                             }
@@ -1404,17 +1404,18 @@ private fun ExpressiveGridDensityOption(
     )
     val outerCorner = 24.dp
 
+    val safeInnerCorner = innerCorner.coerceAtLeast(0.dp)
     val shape = if (isLeft) {
         RoundedCornerShape(
             topStart = outerCorner,
             bottomStart = outerCorner,
-            topEnd = innerCorner,
-            bottomEnd = innerCorner
+            topEnd = safeInnerCorner,
+            bottomEnd = safeInnerCorner
         )
     } else {
         RoundedCornerShape(
-            topStart = innerCorner,
-            bottomStart = innerCorner,
+            topStart = safeInnerCorner,
+            bottomStart = safeInnerCorner,
             topEnd = outerCorner,
             bottomEnd = outerCorner
         )
@@ -1518,7 +1519,7 @@ private fun ExpressiveThemeModeCard(
         onClick = onClick,
         interactionSource = interactionSource,
         modifier = modifier.expressivePressable(interactionSource, pressedScale = 0.93f),
-        shape = RoundedCornerShape(cornerRadius),
+        shape = RoundedCornerShape(cornerRadius.coerceAtLeast(0.dp)),
         color = containerColor,
         border = if (selected) {
             BorderStroke(2.dp, MaterialTheme.colorScheme.primary)
