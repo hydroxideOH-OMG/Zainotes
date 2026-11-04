@@ -1,6 +1,6 @@
 {
   "name": "zainotes-companion",
-  "version": "2.1.0",
+  "version": "3.0.0",
   "description": "Zainotes Android Dev Companion and Preview Server",
   "main": "server.js",
   "scripts": {
