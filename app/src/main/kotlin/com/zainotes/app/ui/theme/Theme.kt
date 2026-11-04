@@ -30,19 +30,19 @@ enum class ThemeMode {
     AMOLED
 }
 
-private val LightColorScheme = lightColorScheme(
-    primary = PrimaryLight,
-    onPrimary = OnPrimaryLight,
-    primaryContainer = PrimaryContainerLight,
-    onPrimaryContainer = OnPrimaryContainerLight,
-    secondary = SecondaryLight,
-    onSecondary = OnSecondaryLight,
-    secondaryContainer = SecondaryContainerLight,
-    onSecondaryContainer = OnSecondaryContainerLight,
-    tertiary = TertiaryLight,
-    onTertiary = OnTertiaryLight,
-    tertiaryContainer = TertiaryContainerLight,
-    onTertiaryContainer = OnTertiaryContainerLight,
+private fun buildCustomLightColorScheme(accent: ThemeAccentColor) = lightColorScheme(
+    primary = accent.primaryLight,
+    onPrimary = accent.onPrimaryLight,
+    primaryContainer = accent.primaryContainerLight,
+    onPrimaryContainer = accent.onPrimaryContainerLight,
+    secondary = accent.secondaryLight,
+    onSecondary = accent.onSecondaryLight,
+    secondaryContainer = accent.secondaryContainerLight,
+    onSecondaryContainer = accent.onSecondaryContainerLight,
+    tertiary = accent.tertiaryLight,
+    onTertiary = accent.onTertiaryLight,
+    tertiaryContainer = accent.tertiaryContainerLight,
+    onTertiaryContainer = accent.onTertiaryContainerLight,
     background = BackgroundLight,
     onBackground = OnBackgroundLight,
     surface = SurfaceLight,
@@ -51,19 +51,19 @@ private val LightColorScheme = lightColorScheme(
     onSurfaceVariant = OnSurfaceVariantLight
 )
 
-private val AmoledColorScheme = darkColorScheme(
-    primary = PrimaryDark,
-    onPrimary = OnPrimaryDark,
-    primaryContainer = PrimaryContainerDark,
-    onPrimaryContainer = OnPrimaryContainerDark,
-    secondary = SecondaryDark,
-    onSecondary = OnSecondaryDark,
-    secondaryContainer = SecondaryContainerDark,
-    onSecondaryContainer = OnSecondaryContainerDark,
-    tertiary = TertiaryDark,
-    onTertiary = OnTertiaryDark,
-    tertiaryContainer = TertiaryContainerDark,
-    onTertiaryContainer = OnTertiaryContainerDark,
+private fun buildCustomAmoledColorScheme(accent: ThemeAccentColor) = darkColorScheme(
+    primary = accent.primaryDark,
+    onPrimary = accent.onPrimaryDark,
+    primaryContainer = accent.primaryContainerDark,
+    onPrimaryContainer = accent.onPrimaryContainerDark,
+    secondary = accent.secondaryDark,
+    onSecondary = accent.onSecondaryDark,
+    secondaryContainer = accent.secondaryContainerDark,
+    onSecondaryContainer = accent.onSecondaryContainerDark,
+    tertiary = accent.tertiaryDark,
+    onTertiary = accent.onTertiaryDark,
+    tertiaryContainer = accent.tertiaryContainerDark,
+    onTertiaryContainer = accent.onTertiaryContainerDark,
     background = AmoledBackground,
     onBackground = OnBackgroundDark,
     surface = AmoledSurface,
@@ -83,6 +83,7 @@ private val AmoledColorScheme = darkColorScheme(
 fun ZainotesTheme(
     themeMode: ThemeMode = ThemeMode.SYSTEM,
     dynamicColor: Boolean = true,
+    accentColor: ThemeAccentColor = ThemeAccentColor.VIOLET,
     content: @Composable () -> Unit
 ) {
     val systemInDark = isSystemInDarkTheme()
@@ -94,8 +95,6 @@ fun ZainotesTheme(
 
     val context = LocalContext.current
     val colorScheme = when {
-        // When AMOLED is selected, strictly prioritize pure AMOLED black
-        themeMode == ThemeMode.AMOLED -> AmoledColorScheme
         dynamicColor && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S -> {
             val dynamic = if (isDark) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
             if (isDark) {
@@ -115,8 +114,8 @@ fun ZainotesTheme(
                 dynamic
             }
         }
-        isDark -> AmoledColorScheme
-        else -> LightColorScheme
+        isDark -> buildCustomAmoledColorScheme(accentColor)
+        else -> buildCustomLightColorScheme(accentColor)
     }
 
     val view = LocalView.current
