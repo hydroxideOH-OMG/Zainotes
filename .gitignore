@@ -33,3 +33,4 @@ implementation_plan.md
 # AI Studio preview server and captured assets
 preview-server.cjs
 public/assets/aistudio/
+release_notes_*.md
