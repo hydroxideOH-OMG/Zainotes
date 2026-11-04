@@ -96,5 +96,9 @@ class NotesRepository(private val noteDao: NoteDao) {
         noteDao.updateArchiveStatus(id, isArchived)
     }
 
+    suspend fun updateTags(id: Long, tags: List<String>) = withContext(Dispatchers.IO) {
+        noteDao.updateTags(id, tags)
+    }
+
     fun searchNotes(query: String): Flow<List<Note>> = noteDao.searchNotes(query).flowOn(Dispatchers.IO)
 }

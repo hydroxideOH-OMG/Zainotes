@@ -39,6 +39,7 @@ import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.PhotoSizeSelectLarge
 import androidx.compose.material.icons.filled.PushPin
+import androidx.compose.material.icons.filled.Sell
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -92,6 +93,9 @@ fun NoteCard(
     onCardSizeChange: (CardSize) -> Unit,
     onColorChange: (String) -> Unit,
     onBackgroundThemeChange: (String) -> Unit = {},
+    onTagClick: ((String) -> Unit)? = null,
+    onUpdateTags: (List<String>) -> Unit = {},
+    availableTags: List<String> = emptyList(),
     onDuplicate: () -> Unit = {},
     onTogglePin: () -> Unit,
     onDelete: () -> Unit,
@@ -111,8 +115,10 @@ fun NoteCard(
     var confirmDelete by remember { mutableStateOf(false) }
     var showSizePicker by remember { mutableStateOf(false) }
     var showThemePicker by remember { mutableStateOf(false) }
+    var showTagPicker by remember { mutableStateOf(false) }
     val sizeSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val themeSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    val tagSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
     // Notes are always in free-form mode by default
     val maxPreviewItems = Int.MAX_VALUE
@@ -232,6 +238,14 @@ fun NoteCard(
                                     }
                                 )
                                 DropdownMenuItem(
+                                    leadingIcon = { Icon(Icons.Default.Sell, contentDescription = null, modifier = Modifier.size(18.dp)) },
+                                    text = { Text("Manage tags...") },
+                                    onClick = {
+                                        showMenu = false
+                                        showTagPicker = true
+                                    }
+                                )
+                                DropdownMenuItem(
                                     leadingIcon = { Icon(Icons.Default.Palette, contentDescription = null, modifier = Modifier.size(18.dp)) },
                                     text = { Text("Color & Background Scene...") },
                                     onClick = {
@@ -335,6 +349,16 @@ fun NoteCard(
                     }
                 }
 
+                // Note Tags Row
+                if (note.tags.isNotEmpty()) {
+                    Spacer(modifier = Modifier.height(10.dp))
+                    NoteCardTagsRow(
+                        tags = note.tags,
+                        cardContentColor = cardContent,
+                        onTagClick = onTagClick
+                    )
+                }
+
                 // Optional metadata footer (relative time only)
                 if (settings.showNoteMetadata) {
                     Spacer(modifier = Modifier.height(10.dp))
@@ -376,6 +400,36 @@ fun NoteCard(
             },
             sheetState = sizeSheetState,
             onDismissRequest = { showSizePicker = false }
+        )
+    }
+
+    if (showTagPicker) {
+        NoteTagPickerSheet(
+            currentTags = note.tags,
+            availableTags = availableTags,
+            onAddTag = { raw ->
+                val cleaned = normalizeTagName(raw)
+                if (cleaned.isNotBlank() && note.tags.none { it.equals(cleaned, ignoreCase = true) }) {
+                    onUpdateTags(note.tags + cleaned)
+                }
+            },
+            onRemoveTag = { tag ->
+                onUpdateTags(note.tags.filterNot { it.equals(tag, ignoreCase = true) })
+            },
+            onToggleTag = { raw ->
+                val cleaned = normalizeTagName(raw)
+                if (cleaned.isNotBlank()) {
+                    val exists = note.tags.any { it.equals(cleaned, ignoreCase = true) }
+                    val next = if (exists) {
+                        note.tags.filterNot { it.equals(cleaned, ignoreCase = true) }
+                    } else {
+                        note.tags + cleaned
+                    }
+                    onUpdateTags(next)
+                }
+            },
+            sheetState = tagSheetState,
+            onDismissRequest = { showTagPicker = false }
         )
     }
 
@@ -596,6 +650,13 @@ private fun NoteBlockPreviewItem(
                     }
                 }
             }
+        }
+        BlockType.IMAGE, BlockType.AUDIO, BlockType.VIDEO -> {
+            NoteMediaPreviewItem(
+                block = block,
+                cardContentColor = cardContentColor,
+                modifier = rowModifier
+            )
         }
         BlockType.TEXT -> {
             if (block.content.isNotBlank()) {

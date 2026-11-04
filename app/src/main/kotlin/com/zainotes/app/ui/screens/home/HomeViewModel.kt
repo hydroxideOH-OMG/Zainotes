@@ -21,6 +21,8 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
+import com.zainotes.app.ui.components.normalizeTagName
+
 enum class HomeFilter {
     ALL
 }
@@ -37,6 +39,9 @@ data class HomeUiState(
     val tasksCount: Int = 0,
     val pinnedCount: Int = 0,
     val openTasksTotal: Int = 0,
+    val allTags: List<String> = emptyList(),
+    val tagCounts: Map<String, Int> = emptyMap(),
+    val selectedTag: String? = null,
     val activeFilter: HomeFilter = HomeFilter.ALL,
     val sortOrder: HomeSortOrder = HomeSortOrder.RECENTLY_EDITED,
     val searchQuery: String = "",
@@ -50,28 +55,56 @@ class HomeViewModel(
 ) : ViewModel() {
 
     private val _activeFilter = MutableStateFlow(HomeFilter.ALL)
+    private val _selectedTag = MutableStateFlow<String?>(null)
     private val _sortOrder = MutableStateFlow(HomeSortOrder.RECENTLY_EDITED)
     private val _searchQuery = MutableStateFlow("")
     private val _isSearchActive = MutableStateFlow(false)
 
     val uiState: StateFlow<HomeUiState> = combine(
         repository.activeNotes,
-        _activeFilter,
+        _selectedTag,
         _sortOrder,
         _searchQuery,
         _isSearchActive
-    ) { notes, filter, sortOrder, query, searchActive ->
+    ) { notes, selectedTag, sortOrder, query, searchActive ->
         val total = notes.size
         val tasks = notes.count { it.totalTasksCount > 0 }
         val pinned = notes.count { it.isPinned }
         val openTasks = notes.sumOf { it.totalTasksCount - it.completedTasksCount }
 
-        val trimmedQuery = query.trim()
-        val searched = if (trimmedQuery.isEmpty()) {
+        val countsMap = linkedMapOf<String, Int>()
+        val canonicalMap = linkedMapOf<String, String>()
+        notes.forEach { note ->
+            note.tags.forEach { rawTag ->
+                val cleaned = normalizeTagName(rawTag)
+                if (cleaned.isNotBlank()) {
+                    val key = cleaned.lowercase()
+                    val display = canonicalMap.getOrPut(key) { cleaned }
+                    countsMap[display] = (countsMap[display] ?: 0) + 1
+                }
+            }
+        }
+        val allTagsSorted = countsMap.keys.sortedBy { it.lowercase() }
+        val activeSelectedTag = selectedTag?.takeIf { sel ->
+            allTagsSorted.any { it.equals(sel, ignoreCase = true) }
+        }
+
+        val tagFiltered = if (activeSelectedTag == null) {
             notes
         } else {
             notes.filter { note ->
+                note.tags.any { it.equals(activeSelectedTag, ignoreCase = true) }
+            }
+        }
+
+        val trimmedQuery = query.trim().removePrefix("#")
+        val searched = if (trimmedQuery.isEmpty()) {
+            tagFiltered
+        } else {
+            tagFiltered.filter { note ->
                 note.title.contains(trimmedQuery, ignoreCase = true) ||
+                    note.previewText.contains(trimmedQuery, ignoreCase = true) ||
+                    note.tags.any { it.contains(trimmedQuery, ignoreCase = true) } ||
                     note.blocks.any { it.content.contains(trimmedQuery, ignoreCase = true) }
             }
         }
@@ -94,7 +127,10 @@ class HomeViewModel(
             tasksCount = tasks,
             pinnedCount = pinned,
             openTasksTotal = openTasks,
-            activeFilter = filter,
+            allTags = allTagsSorted,
+            tagCounts = countsMap,
+            selectedTag = activeSelectedTag,
+            activeFilter = _activeFilter.value,
             sortOrder = sortOrder,
             searchQuery = query,
             isSearchActive = searchActive,
@@ -109,6 +145,19 @@ class HomeViewModel(
 
     fun onFilterChanged(filter: HomeFilter) {
         _activeFilter.value = filter
+        if (filter == HomeFilter.ALL) {
+            _selectedTag.value = null
+        }
+    }
+
+    fun onSelectTag(tag: String?) {
+        if (tag == null) {
+            _selectedTag.value = null
+        } else if (_selectedTag.value?.equals(tag, ignoreCase = true) == true) {
+            _selectedTag.value = null
+        } else {
+            _selectedTag.value = tag
+        }
     }
 
     fun onSortOrderChanged(sortOrder: HomeSortOrder) {
@@ -148,6 +197,12 @@ class HomeViewModel(
     fun updateBackgroundTheme(noteId: Long, themeId: String) {
         viewModelScope.launch {
             repository.updateBackgroundTheme(noteId, themeId)
+        }
+    }
+
+    fun updateNoteTags(noteId: Long, tags: List<String>) {
+        viewModelScope.launch {
+            repository.updateTags(noteId, tags)
         }
     }
 

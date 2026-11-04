@@ -43,4 +43,20 @@ class Converters {
     fun toCardSize(name: String?): CardSize {
         return CardSize.fromName(name)
     }
+
+    @TypeConverter
+    fun fromStringList(tags: List<String>?): String {
+        return gson.toJson(tags ?: emptyList<String>())
+    }
+
+    @TypeConverter
+    fun toStringList(json: String?): List<String> {
+        if (json.isNullOrBlank()) return emptyList()
+        val type = object : TypeToken<List<String>>() {}.type
+        return try {
+            gson.fromJson(json, type) ?: emptyList()
+        } catch (_: Exception) {
+            emptyList()
+        }
+    }
 }

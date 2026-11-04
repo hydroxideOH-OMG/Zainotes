@@ -33,6 +33,10 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.rememberModalBottomSheetState
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavHostController
@@ -47,6 +51,7 @@ import com.zainotes.app.data.preferences.SettingsRepository
 import com.zainotes.app.data.repository.NotesRepository
 import com.zainotes.app.ui.components.DockDestination
 import com.zainotes.app.ui.components.FloatingNavDock
+import com.zainotes.app.ui.components.OtaUpdaterSheet
 import com.zainotes.app.ui.screens.aichat.AiChatScreen
 import com.zainotes.app.ui.screens.editor.EditorScreen
 import com.zainotes.app.ui.screens.editor.EditorViewModel
@@ -55,6 +60,9 @@ import com.zainotes.app.ui.screens.home.HomeViewModel
 import com.zainotes.app.ui.screens.settings.SettingsScreen
 import com.zainotes.app.ui.screens.settings.SettingsViewModel
 import com.zainotes.app.ui.theme.ExpressiveMotion
+import com.zainotes.app.util.OtaCheckResult
+import com.zainotes.app.util.OtaUpdateManager
+import kotlinx.coroutines.launch
 
 private fun routeTabOrder(route: String?): Int = when (route) {
     Screen.Home.route -> 0
@@ -63,6 +71,7 @@ private fun routeTabOrder(route: String?): Int = when (route) {
     else -> -1
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ZainotesNavGraph(
     navController: NavHostController,
@@ -71,6 +80,8 @@ fun ZainotesNavGraph(
     backupManager: BackupManager,
     modifier: Modifier = Modifier
 ) {
+    val context = LocalContext.current
+    val coroutineScope = rememberCoroutineScope()
     val entry by navController.currentBackStackEntryAsState()
     val route = entry?.destination?.route
     val isEditor = route?.startsWith("editor/") == true
@@ -86,6 +97,26 @@ fun ZainotesNavGraph(
     var isBottomDockCollapsed by remember { mutableStateOf(false) }
     var accumulatedScrollDelta by remember { mutableFloatStateOf(0f) }
     var focusApiKeyInSettings by remember { mutableStateOf(false) }
+
+    var hasCheckedOtaThisSession by remember { mutableStateOf(false) }
+    var startupOtaCheckResult by remember { mutableStateOf<OtaCheckResult?>(null) }
+    var showStartupOtaSheet by remember { mutableStateOf(false) }
+    val startupOtaSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+
+    // Automatically check GitHub Releases on launch when enabled and inform the user if a newer release is available
+    LaunchedEffect(settings.autoCheckUpdates, hasCheckedOtaThisSession) {
+        if (!hasCheckedOtaThisSession && settings.autoCheckUpdates) {
+            hasCheckedOtaThisSession = true
+            val result = OtaUpdateManager.checkForUpdates(context).getOrNull()
+            if (result != null &&
+                result.isUpdateAvailable &&
+                !result.latestRelease.tagName.equals(settings.dismissedUpdateTag, ignoreCase = true)
+            ) {
+                startupOtaCheckResult = result
+                showStartupOtaSheet = true
+            }
+        }
+    }
 
     // Reset collapsed dock state whenever route changes
     LaunchedEffect(route) {
@@ -115,6 +146,19 @@ fun ZainotesNavGraph(
                 return Offset.Zero
             }
         }
+    }
+
+    if (showStartupOtaSheet) {
+        OtaUpdaterSheet(
+            initialCheckResult = startupOtaCheckResult,
+            sheetState = startupOtaSheetState,
+            onDismissRequest = { showStartupOtaSheet = false },
+            onDismissReleaseTag = { tag ->
+                coroutineScope.launch {
+                    settingsRepository.setDismissedUpdateTag(tag)
+                }
+            }
+        )
     }
 
     Box(

@@ -73,9 +73,12 @@ interface NoteDao {
     @Query("UPDATE notes SET isArchived = :isArchived, updatedAt = :updatedAt WHERE id = :id")
     suspend fun updateArchiveStatus(id: Long, isArchived: Boolean, updatedAt: Long = System.currentTimeMillis())
 
+    @Query("UPDATE notes SET tags = :tags, updatedAt = :updatedAt WHERE id = :id")
+    suspend fun updateTags(id: Long, tags: List<String>, updatedAt: Long = System.currentTimeMillis())
+
     @Query("""
         SELECT * FROM notes 
-        WHERE isArchived = 0 AND (title LIKE '%' || :query || '%' OR blocks LIKE '%' || :query || '%')
+        WHERE isArchived = 0 AND (title LIKE '%' || :query || '%' OR blocks LIKE '%' || :query || '%' OR tags LIKE '%' || :query || '%')
         ORDER BY isPinned DESC, updatedAt DESC
     """)
     fun searchNotes(query: String): Flow<List<Note>>
