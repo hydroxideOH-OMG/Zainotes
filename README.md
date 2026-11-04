@@ -68,7 +68,7 @@
 
 Get the latest signed APK directly from GitHub Releases:
 
-👉 **[Download Zainotes v3.0.0](https://github.com/hydroxideOH-OMG/Zainotes/releases/latest)**
+👉 **[Download Zainotes v3.1.0](https://github.com/hydroxideOH-OMG/Zainotes/releases/latest)**
 
 - **Package Name**: `com.zainotes.app`
 - **Requires**: Android 8.0 (API 26) or newer

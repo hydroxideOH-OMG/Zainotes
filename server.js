@@ -33,7 +33,7 @@ const server = http.createServer((req, res) => {
       res.writeHead(200, {
         'Content-Type': 'application/vnd.android.package-archive',
         'Content-Length': stat.size,
-        'Content-Disposition': 'attachment; filename="zainotes-v3.0.0-debug.apk"'
+        'Content-Disposition': 'attachment; filename="zainotes-v3.1.0-debug.apk"'
       });
       const readStream = fs.createReadStream(APK_PATH);
       return readStream.pipe(res);
@@ -63,8 +63,8 @@ const server = http.createServer((req, res) => {
     return res.end(JSON.stringify({
       app: 'Zainotes',
       packageId: 'com.zainotes.app',
-      version: '3.0.0',
-      versionCode: 30000,
+      version: '3.1.0',
+      versionCode: 30100,
       status: 'active',
       apkBuilt: apk.exists,
       apkSizeMb: apk.sizeMb,
