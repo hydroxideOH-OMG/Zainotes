@@ -25,6 +25,7 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import com.zainotes.app.ui.components.normalizeTagName
 import java.util.UUID
 
 data class EditorUiState(
@@ -35,6 +36,8 @@ data class EditorUiState(
     val cardSize: CardSize = CardSize.FREEFORM,
     val isPinned: Boolean = false,
     val isArchived: Boolean = false,
+    val tags: List<String> = emptyList(),
+    val availableTags: List<String> = emptyList(),
     val blocks: List<NoteBlock> = listOf(NoteBlock(type = BlockType.TEXT)),
     val activeBlockId: String? = null,
     val strikethroughCompleted: Boolean = true,
@@ -91,6 +94,17 @@ class EditorViewModel(
                 loadNote(initialNoteId)
             }
         }
+        viewModelScope.launch {
+            repository.activeNotes.collect { allNotes ->
+                val distinctTags = allNotes
+                    .flatMap { it.tags }
+                    .map { normalizeTagName(it) }
+                    .filter { it.isNotBlank() }
+                    .distinctBy { it.lowercase() }
+                    .sortedBy { it.lowercase() }
+                _uiState.update { it.copy(availableTags = distinctTags) }
+            }
+        }
     }
 
     private suspend fun loadNote(id: Long) {
@@ -106,6 +120,7 @@ class EditorViewModel(
                     cardSize = note.cardSize,
                     isPinned = note.isPinned,
                     isArchived = note.isArchived,
+                    tags = note.tags,
                     blocks = loadedBlocks,
                     activeBlockId = loadedBlocks.firstOrNull()?.id
                 )
@@ -142,6 +157,41 @@ class EditorViewModel(
         autoSave()
     }
 
+    fun addTag(rawTag: String) {
+        val cleaned = normalizeTagName(rawTag)
+        if (cleaned.isBlank()) return
+        _uiState.update { state ->
+            if (state.tags.any { it.equals(cleaned, ignoreCase = true) }) {
+                state
+            } else {
+                state.copy(tags = state.tags + cleaned)
+            }
+        }
+        autoSave()
+    }
+
+    fun removeTag(tag: String) {
+        _uiState.update { state ->
+            state.copy(tags = state.tags.filterNot { it.equals(tag, ignoreCase = true) })
+        }
+        autoSave()
+    }
+
+    fun toggleTag(rawTag: String) {
+        val cleaned = normalizeTagName(rawTag)
+        if (cleaned.isBlank()) return
+        _uiState.update { state ->
+            val exists = state.tags.any { it.equals(cleaned, ignoreCase = true) }
+            val nextTags = if (exists) {
+                state.tags.filterNot { it.equals(cleaned, ignoreCase = true) }
+            } else {
+                state.tags + cleaned
+            }
+            state.copy(tags = nextTags)
+        }
+        autoSave()
+    }
+
     fun addBlock(type: BlockType, targetIndex: Int = -1) {
         _uiState.update { state ->
             val mutable = state.blocks.toMutableList()
@@ -168,6 +218,42 @@ class EditorViewModel(
                 mutable.add(newBlock)
             }
             state.copy(blocks = mutable, activeBlockId = newBlock.id)
+        }
+        autoSave()
+    }
+
+    fun addMediaBlock(
+        type: BlockType,
+        mediaUri: String,
+        mediaName: String,
+        mediaMimeType: String,
+        mediaDurationMs: Long,
+        mediaSizeBytes: Long
+    ) {
+        _uiState.update { state ->
+            val mutable = state.blocks.toMutableList()
+            val mediaBlock = NoteBlock(
+                id = UUID.randomUUID().toString(),
+                type = type,
+                content = "",
+                order = mutable.size,
+                mediaUri = mediaUri,
+                mediaName = mediaName,
+                mediaMimeType = mediaMimeType,
+                mediaDurationMs = mediaDurationMs,
+                mediaSizeBytes = mediaSizeBytes
+            )
+            if (mutable.size == 1 && mutable[0].type == BlockType.TEXT && mutable[0].content.isBlank() && mutable[0].mediaUri.isNullOrBlank()) {
+                mutable.add(0, mediaBlock)
+            } else {
+                val activeIdx = mutable.indexOfFirst { it.id == state.activeBlockId }
+                if (activeIdx in mutable.indices) {
+                    mutable.add(activeIdx + 1, mediaBlock)
+                } else {
+                    mutable.add(mediaBlock)
+                }
+            }
+            state.copy(blocks = mutable, activeBlockId = mediaBlock.id)
         }
         autoSave()
     }
@@ -344,7 +430,9 @@ class EditorViewModel(
                 val current = _uiState.value
                 if (current.isDeleted) return@withLock
 
-                val hasTextContent = current.title.isNotBlank() || current.blocks.any { it.content.isNotBlank() }
+                val hasTextContent = current.title.isNotBlank() ||
+                    current.blocks.any { it.content.isNotBlank() || !it.mediaUri.isNullOrBlank() } ||
+                    current.tags.isNotEmpty()
                 val hasCustomAppearance = current.colorId != "default" || current.backgroundTheme != "none" || current.isPinned
                 if (!hasTextContent && !hasCustomAppearance && current.noteId == 0L) return@withLock
 
@@ -356,6 +444,7 @@ class EditorViewModel(
                     cardSize = current.cardSize,
                     isPinned = current.isPinned,
                     isArchived = current.isArchived,
+                    tags = current.tags,
                     blocks = current.blocks
                 )
                 val savedId = repository.saveNote(note)

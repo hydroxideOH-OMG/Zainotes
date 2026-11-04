@@ -93,6 +93,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.zainotes.app.data.model.CardSize
 import com.zainotes.app.data.preferences.AppSettingsSnapshot
+import com.zainotes.app.ui.components.HomeTagFilterChip
 import com.zainotes.app.ui.components.NoteCard
 import com.zainotes.app.ui.theme.ExpressiveMotion
 import com.zainotes.app.ui.theme.expressivePressable
@@ -203,7 +204,7 @@ fun HomeScreen(
                                             Box(contentAlignment = Alignment.CenterStart) {
                                                 if (state.searchQuery.isEmpty()) {
                                                     Text(
-                                                        text = "Search notes, tasks, tables...",
+                                                        text = "Search notes, tags, tasks, tables...",
                                                         style = MaterialTheme.typography.bodyLarge,
                                                         color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
                                                     )
@@ -317,7 +318,7 @@ fun HomeScreen(
                     .fillMaxSize()
                     .padding(insets)
             ) {
-                // Full-line Scrollable Header: "Your expressive canvas" + "All | N" Split Button
+                // Full-line Scrollable Header: "Your expressive canvas" + "All | N" Split Button + Tag Filter Chips
                 item(
                     key = "home_scrollable_header",
                     span = StaggeredGridItemSpan.FullLine
@@ -346,10 +347,11 @@ fun HomeScreen(
                         ) {
                             Box {
                                 ExpressiveSplitButton(
-                                    selected = true,
+                                    selected = state.selectedTag == null,
                                     menuExpanded = showSplitMenu,
                                     onLeadingClick = {
                                         viewModel.onFilterChanged(HomeFilter.ALL)
+                                        viewModel.onSelectTag(null)
                                         viewModel.onSearchQueryChanged("")
                                     },
                                     onTrailingClick = { showSplitMenu = !showSplitMenu },
@@ -390,6 +392,15 @@ fun HomeScreen(
                                     }
                                 }
                             }
+
+                            state.allTags.forEach { tag ->
+                                HomeTagFilterChip(
+                                    tag = tag,
+                                    count = state.tagCounts[tag] ?: 0,
+                                    selected = state.selectedTag?.equals(tag, ignoreCase = true) == true,
+                                    onClick = { viewModel.onSelectTag(tag) }
+                                )
+                            }
                         }
                     }
                 }
@@ -407,7 +418,7 @@ fun HomeScreen(
                             horizontalAlignment = Alignment.CenterHorizontally,
                             verticalArrangement = Arrangement.Center
                         ) {
-                            val isFiltered = state.searchQuery.isNotBlank()
+                            val isFiltered = state.searchQuery.isNotBlank() || state.selectedTag != null
                             Icon(
                                 imageVector = if (isFiltered) Icons.Default.Search else Icons.Default.EditNote,
                                 contentDescription = null,
@@ -423,7 +434,7 @@ fun HomeScreen(
                             )
                             Text(
                                 text = if (isFiltered) {
-                                    "Try another search keyword or clear the search filter."
+                                    "Try another search keyword or clear the active tag filter."
                                 } else {
                                     "Create notes, checklists, tables, and bulletin cards with vibrant colors and illustrated scenes."
                                 },
@@ -436,6 +447,7 @@ fun HomeScreen(
                                 FilledTonalButton(
                                     onClick = {
                                         viewModel.onFilterChanged(HomeFilter.ALL)
+                                        viewModel.onSelectTag(null)
                                         viewModel.onSearchQueryChanged("")
                                     }
                                 ) {
@@ -476,6 +488,7 @@ fun HomeScreen(
 
                         NoteCard(
                             note = effectiveNote,
+                            availableTags = state.allTags,
                             settings = settings,
                             onClick = { onNoteClick(note.id) },
                             onTaskToggle = { blockId, checked ->
@@ -484,6 +497,8 @@ fun HomeScreen(
                             onCardSizeChange = { viewModel.updateCardSize(note.id, it) },
                             onColorChange = { viewModel.updateColor(note.id, it) },
                             onBackgroundThemeChange = { viewModel.updateBackgroundTheme(note.id, it) },
+                            onTagClick = { clickedTag -> viewModel.onSelectTag(clickedTag) },
+                            onUpdateTags = { newTags -> viewModel.updateNoteTags(note.id, newTags) },
                             onDuplicate = { viewModel.duplicateNote(note) },
                             onTogglePin = { viewModel.togglePin(note) },
                             onDelete = { viewModel.deleteNote(note) },

@@ -24,7 +24,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 
-@Database(entities = [Note::class], version = 2, exportSchema = false)
+@Database(entities = [Note::class], version = 3, exportSchema = false)
 @TypeConverters(Converters::class)
 abstract class ZainotesDatabase : RoomDatabase() {
     abstract fun noteDao(): NoteDao
@@ -39,6 +39,12 @@ abstract class ZainotesDatabase : RoomDatabase() {
             }
         }
 
+        val MIGRATION_2_3 = object : Migration(2, 3) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE notes ADD COLUMN tags TEXT NOT NULL DEFAULT '[]'")
+            }
+        }
+
         fun getDatabase(context: Context): ZainotesDatabase {
             return INSTANCE ?: synchronized(this) {
                 val instance = Room.databaseBuilder(
@@ -46,7 +52,7 @@ abstract class ZainotesDatabase : RoomDatabase() {
                     ZainotesDatabase::class.java,
                     "zainotes_database"
                 )
-                .addMigrations(MIGRATION_1_2)
+                .addMigrations(MIGRATION_1_2, MIGRATION_2_3)
                 .fallbackToDestructiveMigration()
                 .addCallback(object : Callback() {
                     override fun onCreate(db: SupportSQLiteDatabase) {
@@ -61,6 +67,7 @@ abstract class ZainotesDatabase : RoomDatabase() {
                                     backgroundTheme = "dusk",
                                     cardSize = CardSize.WIDE,
                                     isPinned = true,
+                                    tags = listOf("Getting Started", "Tasks"),
                                     createdAt = now,
                                     updatedAt = now,
                                     blocks = listOf(
@@ -93,6 +100,7 @@ abstract class ZainotesDatabase : RoomDatabase() {
                                     backgroundTheme = "groceries",
                                     cardSize = CardSize.FREEFORM,
                                     isPinned = true,
+                                    tags = listOf("Shopping", "Weekend"),
                                     createdAt = now - 720_000L,
                                     updatedAt = now - 720_000L,
                                     blocks = listOf(
@@ -120,6 +128,7 @@ abstract class ZainotesDatabase : RoomDatabase() {
                                     backgroundTheme = "music",
                                     cardSize = CardSize.FREEFORM,
                                     isPinned = false,
+                                    tags = listOf("Music", "Ideas"),
                                     createdAt = now - 3_600_000L,
                                     updatedAt = now - 3_600_000L,
                                     blocks = listOf(
@@ -141,6 +150,7 @@ abstract class ZainotesDatabase : RoomDatabase() {
                                     backgroundTheme = "places",
                                     cardSize = CardSize.FREEFORM,
                                     isPinned = false,
+                                    tags = listOf("Travel", "Japan"),
                                     createdAt = now - 10_800_000L,
                                     updatedAt = now - 10_800_000L,
                                     blocks = listOf(
@@ -163,6 +173,7 @@ abstract class ZainotesDatabase : RoomDatabase() {
                                     backgroundTheme = "nature",
                                     cardSize = CardSize.FREEFORM,
                                     isPinned = false,
+                                    tags = listOf("Plants", "Home"),
                                     createdAt = now - 86_400_000L,
                                     updatedAt = now - 86_400_000L,
                                     blocks = listOf(

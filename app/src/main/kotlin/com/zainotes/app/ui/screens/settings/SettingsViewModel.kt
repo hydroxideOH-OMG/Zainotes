@@ -29,6 +29,7 @@ import kotlinx.coroutines.launch
 data class SettingsUiState(
     val themeMode: ThemeMode = ThemeMode.SYSTEM,
     val dynamicColor: Boolean = true,
+    val themeAccentColor: String = "violet",
     val amoledPureBlackCards: Boolean = false,
     val showCardBackgrounds: Boolean = true,
     val defaultCardSize: CardSize = CardSize.FREEFORM,
@@ -53,6 +54,7 @@ data class SettingsUiState(
     val totalNotesCount: Int = 0,
     val checklistsCount: Int = 0,
     val pinnedCount: Int = 0,
+    val autoCheckUpdates: Boolean = true,
     val backupMessage: String? = null
 )
 
@@ -78,6 +80,7 @@ class SettingsViewModel(
         SettingsUiState(
             themeMode = snapshot.themeMode,
             dynamicColor = snapshot.dynamicColor,
+            themeAccentColor = snapshot.themeAccentColor,
             amoledPureBlackCards = snapshot.amoledPureBlackCards,
             showCardBackgrounds = snapshot.showCardBackgrounds,
             defaultCardSize = snapshot.defaultCardSize,
@@ -102,6 +105,7 @@ class SettingsViewModel(
             totalNotesCount = notes.size,
             checklistsCount = notes.count { it.totalTasksCount > 0 },
             pinnedCount = notes.count { it.isPinned },
+            autoCheckUpdates = snapshot.autoCheckUpdates,
             backupMessage = transient.message
         )
     }.stateIn(
@@ -116,6 +120,10 @@ class SettingsViewModel(
 
     fun setDynamicColor(enabled: Boolean) {
         viewModelScope.launch { settingsRepository.setDynamicColor(enabled) }
+    }
+
+    fun setThemeAccentColor(colorId: String) {
+        viewModelScope.launch { settingsRepository.setThemeAccentColor(colorId) }
     }
 
     fun setAmoledPureBlackCards(enabled: Boolean) {
@@ -170,6 +178,14 @@ class SettingsViewModel(
         viewModelScope.launch { settingsRepository.setAutoFocusNewNote(enabled) }
     }
 
+    fun setAutoCheckUpdates(enabled: Boolean) {
+        viewModelScope.launch { settingsRepository.setAutoCheckUpdates(enabled) }
+    }
+
+    fun setDismissedUpdateTag(tagName: String) {
+        viewModelScope.launch { settingsRepository.setDismissedUpdateTag(tagName) }
+    }
+
     fun setAiProvider(provider: AiProvider) {
         viewModelScope.launch {
             settingsRepository.setAiProviderId(provider.id)
@@ -190,9 +206,10 @@ class SettingsViewModel(
             if (provider == AiProvider.CUSTOM && customBaseUrl.isNotBlank()) {
                 settingsRepository.setAiCustomBaseUrl(customBaseUrl.trim())
             }
-            if (trimmedKey.isBlank()) {
+            val allowBlankKey = provider == AiProvider.CUSTOM && AiProviderClient.isLocalEndpoint(customBaseUrl)
+            if (trimmedKey.isBlank() && !allowBlankKey) {
                 _transient.value = _transient.value.copy(
-                    message = "Cleared API key for ${provider.displayName}"
+                    message = "Removed API key for ${provider.displayName}"
                 )
                 return@launch
             }
@@ -212,14 +229,13 @@ class SettingsViewModel(
                 _transient.value = _transient.value.copy(
                     isFetchingModels = false,
                     promptModelSelector = true,
-                    message = "Fetched ${fetchedModels.size} models from ${provider.displayName} API"
+                    message = "Loaded ${fetchedModels.size} AI models from ${provider.displayName}"
                 )
             }.onFailure { err ->
-                // Still open the model selector with suggested models + custom model input so user can choose or type custom
                 _transient.value = _transient.value.copy(
                     isFetchingModels = false,
                     promptModelSelector = true,
-                    message = "Key saved. Could not live-list models (${err.message ?: "check key"}) — select or enter a custom model."
+                    message = "Saved! Pick a recommended model or type a model name below (${err.message ?: "offline"})."
                 )
             }
         }
@@ -232,7 +248,7 @@ class SettingsViewModel(
             settingsRepository.setAiSelectedModel(provider.id, clean)
             _transient.value = _transient.value.copy(
                 promptModelSelector = false,
-                message = "Active model set to $clean (${provider.displayName})"
+                message = "Now using $clean"
             )
         }
     }
@@ -248,14 +264,14 @@ class SettingsViewModel(
     fun resetSettingsToDefaults() {
         viewModelScope.launch {
             settingsRepository.resetToDefaults()
-            _transient.value = _transient.value.copy(message = "All preferences restored to defaults")
+            _transient.value = _transient.value.copy(message = "Settings have been reset to default")
         }
     }
 
     fun clearAllNotes() {
         viewModelScope.launch {
             notesRepository.deleteAllNotes()
-            _transient.value = _transient.value.copy(message = "All notes have been cleared from local storage")
+            _transient.value = _transient.value.copy(message = "All notes have been deleted")
         }
     }
 
@@ -263,9 +279,9 @@ class SettingsViewModel(
         viewModelScope.launch {
             val result = backupManager.exportNotesToJson(uri)
             result.onSuccess { count ->
-                _transient.value = _transient.value.copy(message = "Successfully exported $count notes to backup file")
+                _transient.value = _transient.value.copy(message = "Saved $count notes to your backup file")
             }.onFailure { err ->
-                _transient.value = _transient.value.copy(message = "Export failed: ${err.message}")
+                _transient.value = _transient.value.copy(message = "Could not save backup: ${err.message}")
             }
         }
     }
@@ -274,9 +290,9 @@ class SettingsViewModel(
         viewModelScope.launch {
             val result = backupManager.importNotesFromJson(uri)
             result.onSuccess { count ->
-                _transient.value = _transient.value.copy(message = "Successfully imported $count notes!")
+                _transient.value = _transient.value.copy(message = "Restored $count notes from backup!")
             }.onFailure { err ->
-                _transient.value = _transient.value.copy(message = "Import failed: ${err.message}")
+                _transient.value = _transient.value.copy(message = "Could not restore backup: ${err.message}")
             }
         }
     }

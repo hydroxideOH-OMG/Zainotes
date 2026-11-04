@@ -22,6 +22,7 @@ data class Note(
     val cardSize: CardSize = CardSize.FREEFORM,
     val isPinned: Boolean = false,
     val isArchived: Boolean = false,
+    val tags: List<String> = emptyList(),
     val blocks: List<NoteBlock> = emptyList(),
     val createdAt: Long = System.currentTimeMillis(),
     val updatedAt: Long = System.currentTimeMillis()
@@ -36,5 +37,12 @@ data class Note(
 
     /** Plain preview text for search and concise views */
     val previewText: String
-        get() = blocks.joinToString(" ") { it.content }.trim()
+        get() = blocks.joinToString(" ") { block ->
+            when (block.type) {
+                BlockType.IMAGE -> listOfNotNull(block.mediaName, block.content.takeIf { it.isNotBlank() }).joinToString(" ")
+                BlockType.AUDIO -> listOfNotNull(block.mediaName, block.content.takeIf { it.isNotBlank() }).joinToString(" ")
+                BlockType.VIDEO -> listOfNotNull(block.mediaName, block.content.takeIf { it.isNotBlank() }).joinToString(" ")
+                else -> block.content
+            }
+        }.trim()
 }

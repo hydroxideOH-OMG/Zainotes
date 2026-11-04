@@ -97,10 +97,15 @@ import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import com.zainotes.app.data.ai.AiAttachedImage
 import com.zainotes.app.data.ai.AiChatMessage
@@ -118,11 +123,14 @@ import com.zainotes.app.data.preferences.SettingsRepository
 import com.zainotes.app.data.repository.NotesRepository
 import com.zainotes.app.ui.components.ExpressiveAiThinkingCard
 import com.zainotes.app.ui.components.ExpressiveMorphingIndicator
+import com.zainotes.app.ui.components.ExpressiveWaveProgressBar
 import com.zainotes.app.ui.theme.ExpressiveMotion
 import com.zainotes.app.ui.theme.expressivePressable
 import com.zainotes.app.ui.theme.staggeredEntrance
 import java.util.UUID
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -144,6 +152,8 @@ fun AiChatScreen(
 
     var promptInput by remember { mutableStateOf("") }
     var isThinking by remember { mutableStateOf(false) }
+    var streamingReplyText by remember { mutableStateOf("") }
+    var streamingPhase by remember { mutableStateOf("") }
     var showMemoryDialog by remember { mutableStateOf(false) }
     var showHistoryDialog by remember { mutableStateOf(false) }
     var showMissingApiKeyDialog by remember { mutableStateOf(false) }
@@ -176,22 +186,50 @@ fun AiChatScreen(
         }
     }
 
-    fun persistSessionState(updatedMessages: List<AiChatMessage>) {
+    fun persistSessionState(
+        updatedMessages: List<AiChatMessage>,
+        aiSuggestedTitle: String? = null
+    ) {
         if (settingsRepository == null) return
         val sessionId = currentSessionId.ifBlank {
             UUID.randomUUID().toString().also { currentSessionId = it }
         }
-        val firstUserPrompt = updatedMessages.firstOrNull { it.role == "user" }?.text.orEmpty().trim()
-        val computedTitle = if (firstUserPrompt.isNotBlank()) {
-            if (firstUserPrompt.length > 42) firstUserPrompt.take(42).trimEnd() + "…" else firstUserPrompt
-        } else {
-            "New Chat"
-        }
-        val now = System.currentTimeMillis()
         val existing = chatSessions.find { it.id == sessionId }
+        val firstUserPrompt = updatedMessages.firstOrNull { it.role == "user" }?.text.orEmpty().trim()
+        val firstProposedNoteTitle = updatedMessages
+            .flatMap { it.proposedNotes }
+            .firstOrNull()?.title
+
+        val computedTitle = when {
+            existing != null && existing.isCustomTitle && existing.title.isNotBlank() -> {
+                existing.title
+            }
+            !aiSuggestedTitle.isNullOrBlank() -> {
+                AiProviderClient.generateSmartSessionTitle(
+                    userPrompt = firstUserPrompt,
+                    proposedNoteTitle = firstProposedNoteTitle,
+                    aiSuggestedTitle = aiSuggestedTitle
+                )
+            }
+            existing != null && existing.title.isNotBlank() &&
+                existing.title != "New Chat" &&
+                !existing.title.endsWith("…") &&
+                existing.title != firstUserPrompt -> {
+                existing.title
+            }
+            else -> {
+                AiProviderClient.generateSmartSessionTitle(
+                    userPrompt = firstUserPrompt,
+                    proposedNoteTitle = firstProposedNoteTitle
+                )
+            }
+        }
+
+        val now = System.currentTimeMillis()
         val updatedSession = AiChatSession(
             id = sessionId,
             title = computedTitle,
+            isCustomTitle = existing?.isCustomTitle ?: false,
             createdAt = existing?.createdAt ?: now,
             updatedAt = now,
             messages = updatedMessages.toList()
@@ -199,6 +237,23 @@ fun AiChatScreen(
         val nextSessions = listOf(updatedSession) + chatSessions.filterNot { it.id == sessionId }
         coroutineScope.launch {
             settingsRepository.setAiChatSessions(nextSessions.take(40), activeSessionId = sessionId)
+        }
+    }
+
+    fun renameSession(sessionId: String, newTitle: String) {
+        val cleanTitle = newTitle.trim()
+        if (cleanTitle.isEmpty() || settingsRepository == null) return
+        val nextSessions = chatSessions.map { s ->
+            if (s.id == sessionId) {
+                s.copy(
+                    title = cleanTitle,
+                    isCustomTitle = true,
+                    updatedAt = System.currentTimeMillis()
+                )
+            } else s
+        }
+        coroutineScope.launch {
+            settingsRepository.setAiChatSessions(nextSessions, activeSessionId = currentSessionId)
         }
     }
 
@@ -267,8 +322,9 @@ fun AiChatScreen(
         }
     }
 
-    // Automatically scroll to the bottom of the conversation when the soft keyboard opens
-    LaunchedEffect(isImeOpen, messages.size, isThinking) {
+    // Automatically scroll to the bottom of the conversation when keyboard opens or tokens stream in
+    val streamScrollBucket = streamingReplyText.length / 32
+    LaunchedEffect(isImeOpen, messages.size, isThinking, streamScrollBucket) {
         if (messages.isNotEmpty()) {
             val targetIdx = if (isThinking) messages.size else messages.lastIndex
             runCatching { listState.animateScrollToItem(targetIdx.coerceAtLeast(0)) }
@@ -341,6 +397,8 @@ fun AiChatScreen(
         promptInput = ""
         attachedNotes.clear()
         attachedImages.clear()
+        streamingReplyText = ""
+        streamingPhase = "Connecting to stream..."
         isThinking = true
 
         coroutineScope.launch {
@@ -354,7 +412,13 @@ fun AiChatScreen(
                 memories = memories,
                 activeNotes = activeNotes,
                 attachedNotes = currentAttachedNotes,
-                attachedImages = currentAttachedImages
+                attachedImages = currentAttachedImages,
+                onStreamUpdate = { streamUpdate ->
+                    coroutineScope.launch(Dispatchers.Main.immediate) {
+                        streamingReplyText = streamUpdate.partialReplyText
+                        streamingPhase = streamUpdate.statusPhase
+                    }
+                }
             )
 
             if (response.updatedMemories != memories && settingsRepository != null) {
@@ -370,7 +434,12 @@ fun AiChatScreen(
                     providerBadge = response.providerBadge
                 )
             )
-            persistSessionState(messages)
+            persistSessionState(
+                updatedMessages = messages,
+                aiSuggestedTitle = response.suggestedSessionTitle
+            )
+            streamingReplyText = ""
+            streamingPhase = ""
             isThinking = false
         }
     }
@@ -754,13 +823,17 @@ fun AiChatScreen(
                                             }
                                         }
 
-                                        Text(
+                                        MarkdownMessageContent(
                                             text = msg.text,
-                                            style = MaterialTheme.typography.bodyLarge,
-                                            color = if (isUser) {
+                                            textColor = if (isUser) {
                                                 MaterialTheme.colorScheme.onPrimaryContainer
                                             } else {
                                                 MaterialTheme.colorScheme.onSurface
+                                            },
+                                            accentColor = if (isUser) {
+                                                MaterialTheme.colorScheme.onPrimaryContainer
+                                            } else {
+                                                MaterialTheme.colorScheme.primary
                                             }
                                         )
 
@@ -856,9 +929,82 @@ fun AiChatScreen(
                                         ),
                                     contentAlignment = Alignment.CenterStart
                                 ) {
-                                    ExpressiveAiThinkingCard(
-                                        modelDisplayName = activeModelDisplayName
-                                    )
+                                    if (streamingReplyText.isNotBlank()) {
+                                        Card(
+                                            shape = RoundedCornerShape(
+                                                topStart = 26.dp,
+                                                topEnd = 26.dp,
+                                                bottomStart = 8.dp,
+                                                bottomEnd = 26.dp
+                                            ),
+                                            colors = CardDefaults.cardColors(
+                                                containerColor = MaterialTheme.colorScheme.surfaceContainerLow
+                                            ),
+                                            border = androidx.compose.foundation.BorderStroke(
+                                                1.dp,
+                                                MaterialTheme.colorScheme.primary.copy(alpha = 0.45f)
+                                            ),
+                                            modifier = Modifier.fillMaxWidth(0.96f)
+                                        ) {
+                                            Column(
+                                                modifier = Modifier.padding(16.dp),
+                                                verticalArrangement = Arrangement.spacedBy(10.dp)
+                                            ) {
+                                                Row(
+                                                    verticalAlignment = Alignment.CenterVertically,
+                                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                                    modifier = Modifier.fillMaxWidth()
+                                                ) {
+                                                    Row(
+                                                        verticalAlignment = Alignment.CenterVertically,
+                                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                                    ) {
+                                                        ExpressiveMorphingIndicator(
+                                                            size = 22.dp,
+                                                            color = MaterialTheme.colorScheme.onPrimaryContainer,
+                                                            containerColor = MaterialTheme.colorScheme.primaryContainer
+                                                        )
+                                                        Text(
+                                                            text = activeModelDisplayName,
+                                                            style = MaterialTheme.typography.labelLarge,
+                                                            fontWeight = FontWeight.Bold,
+                                                            color = MaterialTheme.colorScheme.primary,
+                                                            maxLines = 1,
+                                                            overflow = TextOverflow.Ellipsis
+                                                        )
+                                                    }
+                                                    Surface(
+                                                        shape = CircleShape,
+                                                        color = MaterialTheme.colorScheme.secondaryContainer,
+                                                        contentColor = MaterialTheme.colorScheme.onSecondaryContainer
+                                                    ) {
+                                                        Text(
+                                                            text = streamingPhase.ifBlank { "Streaming..." },
+                                                            style = MaterialTheme.typography.labelSmall,
+                                                            fontWeight = FontWeight.SemiBold,
+                                                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                                                        )
+                                                    }
+                                                }
+
+                                                MarkdownMessageContent(
+                                                    text = streamingReplyText,
+                                                    textColor = MaterialTheme.colorScheme.onSurface,
+                                                    accentColor = MaterialTheme.colorScheme.primary
+                                                )
+
+                                                ExpressiveWaveProgressBar(
+                                                    color = MaterialTheme.colorScheme.primary,
+                                                    trackColor = MaterialTheme.colorScheme.surfaceContainerHighest
+                                                )
+                                            }
+                                        }
+                                    } else {
+                                        ExpressiveAiThinkingCard(
+                                            modelDisplayName = activeModelDisplayName,
+                                            statusOverride = streamingPhase
+                                        )
+                                    }
                                 }
                             }
                         }
@@ -1091,8 +1237,11 @@ fun AiChatScreen(
         }
     }
 
-    // ── Chat History (Multi-Session) Dialog ──
+    // ── Chat History (Multi-Session) Dialog with Full Session Names & Inline Rename ──
     if (showHistoryDialog) {
+        var editingSessionId by remember { mutableStateOf<String?>(null) }
+        var editingSessionTitle by remember { mutableStateOf("") }
+
         AlertDialog(
             onDismissRequest = { showHistoryDialog = false },
             title = {
@@ -1167,7 +1316,13 @@ fun AiChatScreen(
                     } else {
                         chatSessions.forEach { session ->
                             val isCurrent = session.id == currentSessionId
-                            val lastMsgPreview = session.messages.lastOrNull()?.text.orEmpty()
+                            val isEditingThis = editingSessionId == session.id
+                            val lastMsgPreview = session.messages.lastOrNull()?.text
+                                .orEmpty()
+                                .replace("**", "")
+                                .replace("`", "")
+                                .replace(Regex("\\s+"), " ")
+                                .trim()
                             val relativeTime = DateUtils.getRelativeTimeSpanString(
                                 session.updatedAt,
                                 System.currentTimeMillis(),
@@ -1177,8 +1332,10 @@ fun AiChatScreen(
 
                             Surface(
                                 onClick = {
-                                    switchToSession(session)
-                                    showHistoryDialog = false
+                                    if (!isEditingThis) {
+                                        switchToSession(session)
+                                        showHistoryDialog = false
+                                    }
                                 },
                                 shape = RoundedCornerShape(18.dp),
                                 color = if (isCurrent) {
@@ -1196,95 +1353,183 @@ fun AiChatScreen(
                                     .fillMaxWidth()
                                     .expressivePressable()
                             ) {
-                                Row(
+                                Column(
                                     modifier = Modifier
                                         .fillMaxWidth()
                                         .padding(14.dp),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.SpaceBetween
+                                    verticalArrangement = Arrangement.spacedBy(8.dp)
                                 ) {
                                     Row(
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        modifier = Modifier.weight(1f)
+                                        modifier = Modifier.fillMaxWidth(),
+                                        verticalAlignment = Alignment.Top,
+                                        horizontalArrangement = Arrangement.SpaceBetween
                                     ) {
-                                        Surface(
-                                            shape = RoundedCornerShape(12.dp),
-                                            color = if (isCurrent) {
-                                                MaterialTheme.colorScheme.primary
-                                            } else {
-                                                MaterialTheme.colorScheme.surfaceContainerHighest
-                                            },
-                                            modifier = Modifier.size(38.dp)
+                                        Row(
+                                            verticalAlignment = Alignment.Top,
+                                            modifier = Modifier.weight(1f)
                                         ) {
-                                            Box(contentAlignment = Alignment.Center) {
-                                                Icon(
-                                                    imageVector = Icons.Default.ChatBubbleOutline,
-                                                    contentDescription = null,
-                                                    tint = if (isCurrent) {
-                                                        MaterialTheme.colorScheme.onPrimary
-                                                    } else {
-                                                        MaterialTheme.colorScheme.primary
-                                                    },
-                                                    modifier = Modifier.size(18.dp)
-                                                )
-                                            }
-                                        }
-                                        Spacer(Modifier.width(12.dp))
-                                        Column(modifier = Modifier.weight(1f)) {
-                                            Row(
-                                                verticalAlignment = Alignment.CenterVertically,
-                                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                            Surface(
+                                                shape = RoundedCornerShape(12.dp),
+                                                color = if (isCurrent) {
+                                                    MaterialTheme.colorScheme.primary
+                                                } else {
+                                                    MaterialTheme.colorScheme.surfaceContainerHighest
+                                                },
+                                                modifier = Modifier
+                                                    .padding(top = 2.dp)
+                                                    .size(36.dp)
                                             ) {
+                                                Box(contentAlignment = Alignment.Center) {
+                                                    Icon(
+                                                        imageVector = Icons.Default.ChatBubbleOutline,
+                                                        contentDescription = null,
+                                                        tint = if (isCurrent) {
+                                                            MaterialTheme.colorScheme.onPrimary
+                                                        } else {
+                                                            MaterialTheme.colorScheme.primary
+                                                        },
+                                                        modifier = Modifier.size(18.dp)
+                                                    )
+                                                }
+                                            }
+                                            Spacer(Modifier.width(12.dp))
+                                            Column(
+                                                modifier = Modifier.weight(1f),
+                                                verticalArrangement = Arrangement.spacedBy(4.dp)
+                                            ) {
+                                                // Complete chat session name shown across up to 3 lines without inline badge truncation
                                                 Text(
                                                     text = session.title.ifBlank { "New Chat" },
                                                     style = MaterialTheme.typography.titleSmall,
                                                     fontWeight = FontWeight.Bold,
-                                                    maxLines = 1,
-                                                    overflow = TextOverflow.Ellipsis,
-                                                    modifier = Modifier.weight(1f, fill = false)
-                                                )
-                                                if (isCurrent) {
-                                                    Surface(
-                                                        shape = CircleShape,
-                                                        color = MaterialTheme.colorScheme.primary
-                                                    ) {
-                                                        Text(
-                                                            text = "Active",
-                                                            style = MaterialTheme.typography.labelSmall,
-                                                            color = MaterialTheme.colorScheme.onPrimary,
-                                                            fontWeight = FontWeight.Bold,
-                                                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
-                                                        )
-                                                    }
-                                                }
-                                            }
-                                            if (lastMsgPreview.isNotBlank()) {
-                                                Text(
-                                                    text = lastMsgPreview,
-                                                    style = MaterialTheme.typography.bodySmall,
-                                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                                    maxLines = 1,
+                                                    color = MaterialTheme.colorScheme.onSurface,
+                                                    maxLines = 3,
                                                     overflow = TextOverflow.Ellipsis
                                                 )
+                                                if (lastMsgPreview.isNotBlank()) {
+                                                    Text(
+                                                        text = lastMsgPreview,
+                                                        style = MaterialTheme.typography.bodySmall,
+                                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                        maxLines = 2,
+                                                        overflow = TextOverflow.Ellipsis
+                                                    )
+                                                }
+                                                Row(
+                                                    verticalAlignment = Alignment.CenterVertically,
+                                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                                ) {
+                                                    if (isCurrent) {
+                                                        Surface(
+                                                            shape = CircleShape,
+                                                            color = MaterialTheme.colorScheme.primary
+                                                        ) {
+                                                            Text(
+                                                                text = "Active",
+                                                                style = MaterialTheme.typography.labelSmall,
+                                                                color = MaterialTheme.colorScheme.onPrimary,
+                                                                fontWeight = FontWeight.Bold,
+                                                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
+                                                            )
+                                                        }
+                                                    }
+                                                    Text(
+                                                        text = "${session.messages.size} messages · $relativeTime",
+                                                        style = MaterialTheme.typography.labelSmall,
+                                                        color = MaterialTheme.colorScheme.primary
+                                                    )
+                                                }
                                             }
-                                            Text(
-                                                text = "${session.messages.size} messages · $relativeTime",
-                                                style = MaterialTheme.typography.labelSmall,
-                                                color = MaterialTheme.colorScheme.primary
-                                            )
+                                        }
+
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(2.dp)
+                                        ) {
+                                            IconButton(
+                                                onClick = {
+                                                    if (isEditingThis) {
+                                                        editingSessionId = null
+                                                    } else {
+                                                        editingSessionId = session.id
+                                                        editingSessionTitle = session.title.ifBlank { "New Chat" }
+                                                    }
+                                                },
+                                                modifier = Modifier.size(32.dp)
+                                            ) {
+                                                Icon(
+                                                    imageVector = Icons.Default.Edit,
+                                                    contentDescription = "Rename chat session",
+                                                    tint = MaterialTheme.colorScheme.primary,
+                                                    modifier = Modifier.size(17.dp)
+                                                )
+                                            }
+                                            IconButton(
+                                                onClick = { deleteSession(session.id) },
+                                                modifier = Modifier.size(32.dp)
+                                            ) {
+                                                Icon(
+                                                    imageVector = Icons.Default.DeleteOutline,
+                                                    contentDescription = "Delete chat session",
+                                                    tint = MaterialTheme.colorScheme.error,
+                                                    modifier = Modifier.size(18.dp)
+                                                )
+                                            }
                                         }
                                     }
 
-                                    IconButton(
-                                        onClick = { deleteSession(session.id) },
-                                        modifier = Modifier.size(34.dp)
+                                    // Inline Rename Editor when Edit button is tapped
+                                    AnimatedVisibility(
+                                        visible = isEditingThis,
+                                        enter = expandVertically(ExpressiveMotion.spatialFastSpec()) + fadeIn(),
+                                        exit = shrinkVertically(ExpressiveMotion.spatialFastSpec()) + fadeOut()
                                     ) {
-                                        Icon(
-                                            imageVector = Icons.Default.DeleteOutline,
-                                            contentDescription = "Delete chat session",
-                                            tint = MaterialTheme.colorScheme.error,
-                                            modifier = Modifier.size(18.dp)
-                                        )
+                                        Column(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .padding(top = 4.dp),
+                                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                                        ) {
+                                            OutlinedTextField(
+                                                value = editingSessionTitle,
+                                                onValueChange = { editingSessionTitle = it },
+                                                label = { Text("Chat Name") },
+                                                singleLine = true,
+                                                shape = RoundedCornerShape(14.dp),
+                                                modifier = Modifier.fillMaxWidth()
+                                            )
+                                            Row(
+                                                modifier = Modifier.fillMaxWidth(),
+                                                horizontalArrangement = Arrangement.End,
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                TextButton(
+                                                    onClick = { editingSessionId = null }
+                                                ) {
+                                                    Text("Cancel")
+                                                }
+                                                Spacer(Modifier.width(6.dp))
+                                                FilledTonalButton(
+                                                    onClick = {
+                                                        val trimmed = editingSessionTitle.trim()
+                                                        if (trimmed.isNotBlank()) {
+                                                            renameSession(session.id, trimmed)
+                                                        }
+                                                        editingSessionId = null
+                                                    },
+                                                    enabled = editingSessionTitle.trim().isNotBlank(),
+                                                    shape = RoundedCornerShape(12.dp)
+                                                ) {
+                                                    Icon(
+                                                        imageVector = Icons.Default.Check,
+                                                        contentDescription = null,
+                                                        modifier = Modifier.size(16.dp)
+                                                    )
+                                                    Spacer(Modifier.width(4.dp))
+                                                    Text("Save Name", fontWeight = FontWeight.Bold)
+                                                }
+                                            }
+                                        }
                                     }
                                 }
                             }
@@ -1792,6 +2037,12 @@ private fun ProposedNoteApprovalCard(
     onOpenNote: (Long) -> Unit
 ) {
     val isEdit = proposal.actionType == "EDIT_NOTE"
+    val cleanSummary = proposal.summary.trim()
+    val showSummary = cleanSummary.length > 6 &&
+        !cleanSummary.equals("blocks", ignoreCase = true) &&
+        !cleanSummary.equals("note", ignoreCase = true) &&
+        !cleanSummary.equals(proposal.title.trim(), ignoreCase = true)
+
     Surface(
         shape = RoundedCornerShape(20.dp),
         color = MaterialTheme.colorScheme.surfaceContainerHigh,
@@ -1833,13 +2084,17 @@ private fun ProposedNoteApprovalCard(
             Text(
                 text = proposal.title,
                 style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onSurface
             )
-            Text(
-                text = proposal.summary,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
+            if (showSummary) {
+                Spacer(Modifier.height(2.dp))
+                Text(
+                    text = cleanSummary,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
 
             Spacer(Modifier.height(10.dp))
 
@@ -1871,7 +2126,12 @@ private fun ProposedNoteApprovalCard(
                                                     .padding(6.dp)
                                             ) {
                                                 Text(
-                                                    text = cell,
+                                                    text = rememberMarkdownAnnotatedString(
+                                                        raw = cell,
+                                                        textColor = MaterialTheme.colorScheme.onSurface,
+                                                        accentColor = MaterialTheme.colorScheme.primary,
+                                                        codeBgColor = MaterialTheme.colorScheme.surfaceContainerHighest
+                                                    ),
                                                     style = MaterialTheme.typography.labelSmall,
                                                     fontWeight = if (rIdx == 0) FontWeight.Bold else FontWeight.Normal
                                                 )
@@ -1934,7 +2194,16 @@ private fun ProposedNoteApprovalCard(
                                     else -> {}
                                 }
                                 Text(
-                                    text = b.content,
+                                    text = rememberMarkdownAnnotatedString(
+                                        raw = b.content,
+                                        textColor = if (b.type == BlockType.HEADING) {
+                                            MaterialTheme.colorScheme.primary
+                                        } else {
+                                            MaterialTheme.colorScheme.onSurface
+                                        },
+                                        accentColor = MaterialTheme.colorScheme.primary,
+                                        codeBgColor = MaterialTheme.colorScheme.surfaceContainerHighest
+                                    ),
                                     style = when (b.type) {
                                         BlockType.HEADING -> MaterialTheme.typography.labelLarge.copy(
                                             fontWeight = FontWeight.Bold,
@@ -1952,10 +2221,11 @@ private fun ProposedNoteApprovalCard(
                 }
             }
 
-            Spacer(Modifier.height(12.dp))
+            Spacer(Modifier.height(14.dp))
 
+            // Balanced single-line action row that never wraps into a tall circular blob
             Row(
-                horizontalArrangement = Arrangement.End,
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier.fillMaxWidth()
             ) {
@@ -1963,11 +2233,22 @@ private fun ProposedNoteApprovalCard(
                     "APPROVED" -> {
                         FilledTonalButton(
                             onClick = { proposal.savedNoteId?.let(onOpenNote) },
-                            modifier = Modifier.expressivePressable()
+                            shape = RoundedCornerShape(14.dp),
+                            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 0.dp),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(44.dp)
+                                .expressivePressable()
                         ) {
                             Icon(Icons.Default.Check, contentDescription = null, Modifier.size(18.dp))
                             Spacer(Modifier.width(6.dp))
-                            Text(if (isEdit) "Edit Applied · Open in Editor" else "Saved · Open in Editor")
+                            Text(
+                                text = if (isEdit) "Edit Applied · Open Note" else "Saved · Open Note",
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                style = MaterialTheme.typography.labelLarge,
+                                fontWeight = FontWeight.Bold
+                            )
                         }
                     }
                     "DISCARDED" -> {
@@ -1980,20 +2261,41 @@ private fun ProposedNoteApprovalCard(
                     else -> {
                         OutlinedButton(
                             onClick = onDiscard,
-                            modifier = Modifier.expressivePressable()
+                            shape = RoundedCornerShape(14.dp),
+                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 0.dp),
+                            modifier = Modifier
+                                .weight(0.42f)
+                                .height(44.dp)
+                                .expressivePressable()
                         ) {
                             Icon(Icons.Default.Close, contentDescription = null, Modifier.size(16.dp))
                             Spacer(Modifier.width(4.dp))
-                            Text("Discard")
+                            Text(
+                                text = "Discard",
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                style = MaterialTheme.typography.labelLarge,
+                                fontWeight = FontWeight.SemiBold
+                            )
                         }
-                        Spacer(Modifier.width(8.dp))
                         FilledTonalButton(
                             onClick = onApprove,
-                            modifier = Modifier.expressivePressable()
+                            shape = RoundedCornerShape(14.dp),
+                            contentPadding = PaddingValues(horizontal = 14.dp, vertical = 0.dp),
+                            modifier = Modifier
+                                .weight(0.58f)
+                                .height(44.dp)
+                                .expressivePressable()
                         ) {
-                            Icon(Icons.Default.AddTask, contentDescription = null, Modifier.size(18.dp))
+                            Icon(Icons.Default.AddTask, contentDescription = null, Modifier.size(17.dp))
                             Spacer(Modifier.width(6.dp))
-                            Text(if (isEdit) "Approve & Apply Edit" else "Approve & Add to Notes")
+                            Text(
+                                text = if (isEdit) "Apply Edit" else "Add to Notes",
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                style = MaterialTheme.typography.labelLarge,
+                                fontWeight = FontWeight.Bold
+                            )
                         }
                     }
                 }
@@ -2001,3 +2303,496 @@ private fun ProposedNoteApprovalCard(
         }
     }
 }
+
+/**
+ * Renders AI or user message text with rich Markdown support:
+ * - Headings (#, ##, ###)
+ * - Bullet lists (•, -, *, +) with hanging indent and bold inline spans
+ * - Numbered lists (1., 2.) with hanging indent
+ * - Task checklists (- [ ], - [x])
+ * - Fenced code blocks (```)
+ * - Blockquotes (>)
+ * - Inline bold (**text**), italic (*text*), inline code (`code`), and strikethrough (~~text~~)
+ */
+@Composable
+private fun MarkdownMessageContent(
+    text: String,
+    textColor: Color,
+    accentColor: Color,
+    modifier: Modifier = Modifier
+) {
+    val codeBgColor = MaterialTheme.colorScheme.surfaceContainerHighest
+    val blocks = remember(text) { parseMarkdownBlocks(text) }
+
+    Column(
+        modifier = modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(6.dp)
+    ) {
+        blocks.forEach { block ->
+            when (block) {
+                is MarkdownUiBlock.Heading -> {
+                    val headingStyle = when (block.level) {
+                        1 -> MaterialTheme.typography.titleMedium
+                        2 -> MaterialTheme.typography.titleSmall
+                        else -> MaterialTheme.typography.labelLarge
+                    }
+                    Text(
+                        text = rememberMarkdownAnnotatedString(
+                            raw = block.content,
+                            textColor = accentColor,
+                            accentColor = accentColor,
+                            codeBgColor = codeBgColor
+                        ),
+                        style = headingStyle,
+                        fontWeight = FontWeight.ExtraBold,
+                        color = accentColor,
+                        modifier = Modifier.padding(top = 4.dp, bottom = 2.dp)
+                    )
+                }
+
+                is MarkdownUiBlock.BulletItem -> {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.Top
+                    ) {
+                        Text(
+                            text = "•",
+                            style = MaterialTheme.typography.bodyLarge,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = accentColor,
+                            modifier = Modifier
+                                .padding(start = (block.indentLevel * 10).dp)
+                                .width(18.dp)
+                        )
+                        Text(
+                            text = rememberMarkdownAnnotatedString(
+                                raw = block.content,
+                                textColor = textColor,
+                                accentColor = accentColor,
+                                codeBgColor = codeBgColor
+                            ),
+                            style = MaterialTheme.typography.bodyLarge,
+                            color = textColor,
+                            modifier = Modifier.weight(1f)
+                        )
+                    }
+                }
+
+                is MarkdownUiBlock.NumberedItem -> {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.Top
+                    ) {
+                        Text(
+                            text = "${block.number}.",
+                            style = MaterialTheme.typography.bodyLarge,
+                            fontWeight = FontWeight.Bold,
+                            color = accentColor,
+                            modifier = Modifier.width(26.dp)
+                        )
+                        Text(
+                            text = rememberMarkdownAnnotatedString(
+                                raw = block.content,
+                                textColor = textColor,
+                                accentColor = accentColor,
+                                codeBgColor = codeBgColor
+                            ),
+                            style = MaterialTheme.typography.bodyLarge,
+                            color = textColor,
+                            modifier = Modifier.weight(1f)
+                        )
+                    }
+                }
+
+                is MarkdownUiBlock.TaskItem -> {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.Top,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Icon(
+                            imageVector = if (block.checked) Icons.Default.CheckBox else Icons.Default.CheckBoxOutlineBlank,
+                            contentDescription = null,
+                            tint = accentColor,
+                            modifier = Modifier
+                                .padding(top = 3.dp)
+                                .size(17.dp)
+                        )
+                        Text(
+                            text = rememberMarkdownAnnotatedString(
+                                raw = block.content,
+                                textColor = textColor,
+                                accentColor = accentColor,
+                                codeBgColor = codeBgColor
+                            ),
+                            style = MaterialTheme.typography.bodyLarge,
+                            color = textColor,
+                            modifier = Modifier.weight(1f)
+                        )
+                    }
+                }
+
+                is MarkdownUiBlock.Quote -> {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 2.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .width(3.dp)
+                                .height(22.dp)
+                                .clip(CircleShape)
+                                .background(accentColor.copy(alpha = 0.7f))
+                        )
+                        Spacer(Modifier.width(10.dp))
+                        Text(
+                            text = rememberMarkdownAnnotatedString(
+                                raw = block.content,
+                                textColor = textColor.copy(alpha = 0.9f),
+                                accentColor = accentColor,
+                                codeBgColor = codeBgColor
+                            ),
+                            style = MaterialTheme.typography.bodyMedium.copy(fontStyle = FontStyle.Italic),
+                            color = textColor.copy(alpha = 0.9f)
+                        )
+                    }
+                }
+
+                is MarkdownUiBlock.CodeBlock -> {
+                    Surface(
+                        shape = RoundedCornerShape(12.dp),
+                        color = codeBgColor,
+                        border = androidx.compose.foundation.BorderStroke(
+                            1.dp,
+                            MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+                        ),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Column(modifier = Modifier.padding(12.dp)) {
+                            if (block.language.isNotBlank()) {
+                                Text(
+                                    text = block.language.uppercase(),
+                                    style = MaterialTheme.typography.labelSmall,
+                                    fontWeight = FontWeight.Bold,
+                                    color = accentColor,
+                                    modifier = Modifier.padding(bottom = 4.dp)
+                                )
+                            }
+                            Text(
+                                text = block.code,
+                                style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                        }
+                    }
+                }
+
+                is MarkdownUiBlock.Divider -> {
+                    HorizontalDivider(
+                        modifier = Modifier.padding(vertical = 4.dp),
+                        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+                    )
+                }
+
+                is MarkdownUiBlock.Paragraph -> {
+                    Text(
+                        text = rememberMarkdownAnnotatedString(
+                            raw = block.content,
+                            textColor = textColor,
+                            accentColor = accentColor,
+                            codeBgColor = codeBgColor
+                        ),
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = textColor
+                    )
+                }
+            }
+        }
+    }
+}
+
+private sealed class MarkdownUiBlock {
+    data class Heading(val level: Int, val content: String) : MarkdownUiBlock()
+    data class BulletItem(val indentLevel: Int, val content: String) : MarkdownUiBlock()
+    data class NumberedItem(val number: String, val content: String) : MarkdownUiBlock()
+    data class TaskItem(val checked: Boolean, val content: String) : MarkdownUiBlock()
+    data class Quote(val content: String) : MarkdownUiBlock()
+    data class CodeBlock(val language: String, val code: String) : MarkdownUiBlock()
+    data object Divider : MarkdownUiBlock()
+    data class Paragraph(val content: String) : MarkdownUiBlock()
+}
+
+private fun parseMarkdownBlocks(rawText: String): List<MarkdownUiBlock> {
+    if (rawText.isBlank()) return emptyList()
+    val result = mutableListOf<MarkdownUiBlock>()
+    val lines = rawText.lines()
+    var i = 0
+
+    while (i < lines.size) {
+        val rawLine = lines[i]
+        val trimmed = rawLine.trim()
+
+        if (trimmed.isEmpty()) {
+            i++
+            continue
+        }
+
+        // Fenced code block ```
+        if (trimmed.startsWith("```")) {
+            val lang = trimmed.removePrefix("```").trim()
+            val codeBuilder = StringBuilder()
+            i++
+            while (i < lines.size && !lines[i].trim().startsWith("```")) {
+                if (codeBuilder.isNotEmpty()) codeBuilder.append('\n')
+                codeBuilder.append(lines[i])
+                i++
+            }
+            result.add(MarkdownUiBlock.CodeBlock(language = lang, code = codeBuilder.toString()))
+            i++ // skip closing ```
+            continue
+        }
+
+        // Horizontal divider
+        if (trimmed == "---" || trimmed == "***" || trimmed == "___") {
+            result.add(MarkdownUiBlock.Divider)
+            i++
+            continue
+        }
+
+        // Headings (#, ##, ###, ####)
+        val headingMatch = Regex("^(#{1,4})\\s+(.+)$").find(trimmed)
+        if (headingMatch != null) {
+            val level = headingMatch.groupValues[1].length
+            val content = headingMatch.groupValues[2].trim()
+            result.add(MarkdownUiBlock.Heading(level = level, content = content))
+            i++
+            continue
+        }
+
+        // Task checklist (- [ ] or - [x] or • [ ])
+        val taskMatch = Regex("^(?:[-*•+])\\s+\\[([ xX])]\\s+(.+)$").find(trimmed)
+        if (taskMatch != null) {
+            val checked = taskMatch.groupValues[1].equals("x", ignoreCase = true)
+            val content = taskMatch.groupValues[2].trim()
+            result.add(MarkdownUiBlock.TaskItem(checked = checked, content = content))
+            i++
+            continue
+        }
+
+        // Bullet list item (•, -, *, +)
+        val leadingSpaces = rawLine.takeWhile { it == ' ' || it == '\t' }.length
+        val bulletMatch = Regex("^(?:[•\\-*+])\\s+(.+)$").find(trimmed)
+        if (bulletMatch != null) {
+            val indent = (leadingSpaces / 2).coerceIn(0, 3)
+            result.add(MarkdownUiBlock.BulletItem(indentLevel = indent, content = bulletMatch.groupValues[1].trim()))
+            i++
+            continue
+        }
+
+        // Numbered list item (1. or 1))
+        val numMatch = Regex("^(\\d+)[.)]\\s+(.+)$").find(trimmed)
+        if (numMatch != null) {
+            result.add(
+                MarkdownUiBlock.NumberedItem(
+                    number = numMatch.groupValues[1],
+                    content = numMatch.groupValues[2].trim()
+                )
+            )
+            i++
+            continue
+        }
+
+        // Blockquote (> ...)
+        if (trimmed.startsWith(">")) {
+            val quoteText = trimmed.removePrefix(">").trim()
+            if (quoteText.isNotEmpty()) {
+                result.add(MarkdownUiBlock.Quote(content = quoteText))
+            }
+            i++
+            continue
+        }
+
+        result.add(MarkdownUiBlock.Paragraph(content = trimmed))
+        i++
+    }
+
+    return result
+}
+
+@Composable
+private fun rememberMarkdownAnnotatedString(
+    raw: String,
+    textColor: Color,
+    accentColor: Color,
+    codeBgColor: Color
+): AnnotatedString {
+    return remember(raw, textColor, accentColor, codeBgColor) {
+        buildMarkdownAnnotatedString(
+            raw = raw,
+            textColor = textColor,
+            accentColor = accentColor,
+            codeBgColor = codeBgColor
+        )
+    }
+}
+
+private fun buildMarkdownAnnotatedString(
+    raw: String,
+    textColor: Color,
+    accentColor: Color,
+    codeBgColor: Color
+): AnnotatedString = buildAnnotatedString {
+    var i = 0
+    val len = raw.length
+
+    while (i < len) {
+        when {
+            // Bold + Italic ***text***
+            raw.startsWith("***", i) -> {
+                val close = raw.indexOf("***", i + 3)
+                if (close > i + 3) {
+                    withStyle(
+                        SpanStyle(
+                            fontWeight = FontWeight.ExtraBold,
+                            fontStyle = FontStyle.Italic,
+                            color = textColor
+                        )
+                    ) {
+                        append(raw.substring(i + 3, close))
+                    }
+                    i = close + 3
+                } else {
+                    // Unclosed *** at the end of live stream
+                    withStyle(
+                        SpanStyle(
+                            fontWeight = FontWeight.ExtraBold,
+                            fontStyle = FontStyle.Italic,
+                            color = textColor
+                        )
+                    ) {
+                        append(raw.substring(i + 3))
+                    }
+                    break
+                }
+            }
+
+            // Bold **text** or __text__
+            raw.startsWith("**", i) || raw.startsWith("__", i) -> {
+                val delim = raw.substring(i, i + 2)
+                val close = raw.indexOf(delim, i + 2)
+                if (close > i + 2) {
+                    withStyle(
+                        SpanStyle(
+                            fontWeight = FontWeight.Bold,
+                            color = textColor
+                        )
+                    ) {
+                        append(raw.substring(i + 2, close))
+                    }
+                    i = close + 2
+                } else {
+                    // Unclosed ** during live token streaming -> render bold without raw asterisks
+                    withStyle(
+                        SpanStyle(
+                            fontWeight = FontWeight.Bold,
+                            color = textColor
+                        )
+                    ) {
+                        append(raw.substring(i + 2))
+                    }
+                    break
+                }
+            }
+
+            // Strikethrough ~~text~~
+            raw.startsWith("~~", i) -> {
+                val close = raw.indexOf("~~", i + 2)
+                if (close > i + 2) {
+                    withStyle(
+                        SpanStyle(
+                            textDecoration = TextDecoration.LineThrough,
+                            color = textColor.copy(alpha = 0.75f)
+                        )
+                    ) {
+                        append(raw.substring(i + 2, close))
+                    }
+                    i = close + 2
+                } else {
+                    append("~~")
+                    i += 2
+                }
+            }
+
+            // Inline code `code`
+            raw[i] == '`' -> {
+                val close = raw.indexOf('`', i + 1)
+                if (close > i + 1) {
+                    withStyle(
+                        SpanStyle(
+                            fontFamily = FontFamily.Monospace,
+                            fontWeight = FontWeight.SemiBold,
+                            background = codeBgColor,
+                            color = accentColor
+                        )
+                    ) {
+                        append(" ${raw.substring(i + 1, close)} ")
+                    }
+                    i = close + 1
+                } else {
+                    append('`')
+                    i++
+                }
+            }
+
+            // Markdown link [label](url)
+            raw[i] == '[' -> {
+                val closeBracket = raw.indexOf(']', i + 1)
+                val openParen = if (closeBracket > i) raw.indexOf('(', closeBracket + 1) else -1
+                val closeParen = if (openParen == closeBracket + 1) raw.indexOf(')', openParen + 1) else -1
+                if (closeBracket > i + 1 && openParen == closeBracket + 1 && closeParen > openParen + 1) {
+                    val label = raw.substring(i + 1, closeBracket)
+                    withStyle(
+                        SpanStyle(
+                            color = accentColor,
+                            fontWeight = FontWeight.SemiBold,
+                            textDecoration = TextDecoration.Underline
+                        )
+                    ) {
+                        append(label)
+                    }
+                    i = closeParen + 1
+                } else {
+                    append(raw[i])
+                    i++
+                }
+            }
+
+            // Italic *text* (only when not followed by space)
+            raw[i] == '*' && i + 1 < len && raw[i + 1] != ' ' && raw[i + 1] != '*' -> {
+                val close = raw.indexOf('*', i + 1)
+                if (close > i + 1 && raw[close - 1] != ' ') {
+                    withStyle(
+                        SpanStyle(
+                            fontStyle = FontStyle.Italic,
+                            color = textColor
+                        )
+                    ) {
+                        append(raw.substring(i + 1, close))
+                    }
+                    i = close + 1
+                } else {
+                    append(raw[i])
+                    i++
+                }
+            }
+
+            else -> {
+                append(raw[i])
+                i++
+            }
+        }
+    }
+}
+

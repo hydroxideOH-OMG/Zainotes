@@ -10,9 +10,14 @@ import android.net.Uri
 import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -53,6 +58,7 @@ import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.RestartAlt
 import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.Sync
+import androidx.compose.material.icons.filled.SystemUpdate
 import androidx.compose.material.icons.filled.Upload
 import androidx.compose.material.icons.filled.ViewAgenda
 import androidx.compose.material.icons.filled.ViewCarousel
@@ -114,9 +120,11 @@ import com.zainotes.app.ui.components.CardSizePickerSheet
 import com.zainotes.app.ui.components.ExpressiveSwitch
 import com.zainotes.app.ui.components.NoteBackgroundRenderer
 import com.zainotes.app.ui.components.NoteThemePickerSheet
+import com.zainotes.app.ui.components.OtaUpdaterSheet
 import com.zainotes.app.ui.theme.CardShapeExpressive
 import com.zainotes.app.ui.theme.ExpressiveMotion
 import com.zainotes.app.ui.theme.NoteColor
+import com.zainotes.app.ui.theme.ThemeAccentColor
 import com.zainotes.app.ui.theme.ThemeMode
 import com.zainotes.app.ui.theme.expressivePressable
 import com.zainotes.app.ui.theme.staggeredEntrance
@@ -143,9 +151,11 @@ fun SettingsScreen(
     var showSizePicker by remember { mutableStateOf(false) }
     var showDefaultThemePicker by remember { mutableStateOf(false) }
     var showClearConfirmation by remember { mutableStateOf(false) }
+    var showOtaUpdaterSheet by remember { mutableStateOf(false) }
 
     val sizeSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val themeSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    val otaSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
     val isDark = MaterialTheme.colorScheme.background.luminance() < 0.2f
 
@@ -194,12 +204,12 @@ fun SettingsScreen(
                 title = {
                     Column {
                         Text(
-                            text = "Settings & Customization",
+                            text = "Settings",
                             style = MaterialTheme.typography.titleLarge,
                             fontWeight = FontWeight.ExtraBold
                         )
                         Text(
-                            text = "Material 3 Expressive Preferences",
+                            text = "Personalize how Zainotes looks and works",
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -226,8 +236,8 @@ fun SettingsScreen(
                 .widthIn(max = 720.dp),
             verticalArrangement = Arrangement.spacedBy(18.dp)
         ) {
-            // 1. Appearance & Expressive Theme
-            SettingsSectionHeader(title = "Appearance & Theme")
+            // 1. Look & Feel
+            SettingsSectionHeader(title = "Look & Feel")
 
             Card(
                 shape = CardShapeExpressive,
@@ -240,12 +250,12 @@ fun SettingsScreen(
             ) {
                 Column(modifier = Modifier.padding(16.dp)) {
                     Text(
-                        text = "Canvas Appearance Mode",
+                        text = "App Theme",
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold
                     )
                     Text(
-                        text = "AMOLED mode uses pure #000000 pitch-black surfaces for maximum OLED contrast",
+                        text = "Choose automatic, daytime light, or battery-saving pure black dark mode",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.padding(top = 2.dp, bottom = 12.dp)
@@ -257,8 +267,8 @@ fun SettingsScreen(
                         horizontalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
                         ExpressiveThemeModeCard(
-                            title = "System",
-                            subtitle = "Auto OLED",
+                            title = "Auto",
+                            subtitle = "Match phone",
                             icon = Icons.Default.BrightnessAuto,
                             selected = state.themeMode == ThemeMode.SYSTEM,
                             onClick = { viewModel.setThemeMode(ThemeMode.SYSTEM) },
@@ -266,15 +276,15 @@ fun SettingsScreen(
                         )
                         ExpressiveThemeModeCard(
                             title = "Light",
-                            subtitle = "Daylight",
+                            subtitle = "Bright & clean",
                             icon = Icons.Default.LightMode,
                             selected = state.themeMode == ThemeMode.LIGHT,
                             onClick = { viewModel.setThemeMode(ThemeMode.LIGHT) },
                             modifier = Modifier.weight(1f)
                         )
                         ExpressiveThemeModeCard(
-                            title = "AMOLED",
-                            subtitle = "True #000",
+                            title = "Dark",
+                            subtitle = "Pure black",
                             icon = Icons.Default.NightlightRound,
                             selected = state.themeMode == ThemeMode.AMOLED,
                             onClick = { viewModel.setThemeMode(ThemeMode.AMOLED) },
@@ -284,23 +294,141 @@ fun SettingsScreen(
 
                     HorizontalDivider(modifier = Modifier.padding(vertical = 14.dp))
 
-                    // Dynamic Monet Colors (Android 12+)
+                    val supportsDynamicColor = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
                     SettingsSwitchRow(
-                        title = "Dynamic Wallpaper Color (Monet)",
-                        subtitle = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S)
-                            "Harmonize UI accents with your device wallpaper palette"
-                        else "Dynamic colors require Android 12 or later",
-                        checked = state.dynamicColor,
+                        title = "Match Wallpaper Colors",
+                        subtitle = if (supportsDynamicColor)
+                            "Automatically pick button and highlight colors from your phone's wallpaper"
+                        else "Requires Android 12 or newer",
+                        checked = state.dynamicColor && supportsDynamicColor,
                         onCheckedChange = { viewModel.setDynamicColor(it) },
-                        enabled = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
+                        enabled = supportsDynamicColor
                     )
+
+                    // Custom Theme Accent Color Selector when Dynamic Wallpaper Color is OFF
+                    AnimatedVisibility(
+                        visible = !state.dynamicColor || !supportsDynamicColor,
+                        enter = expandVertically(ExpressiveMotion.spatialFastSpec()) + fadeIn(),
+                        exit = shrinkVertically(ExpressiveMotion.spatialFastSpec()) + fadeOut()
+                    ) {
+                        val selectedAccent = ThemeAccentColor.fromId(state.themeAccentColor)
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(top = 12.dp)
+                        ) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = "Accent Color",
+                                        style = MaterialTheme.typography.bodyLarge,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = MaterialTheme.colorScheme.onSurface
+                                    )
+                                    Text(
+                                        text = "Pick your favorite highlight color for buttons, switches, and badges",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                                Surface(
+                                    shape = CircleShape,
+                                    color = MaterialTheme.colorScheme.primaryContainer,
+                                    contentColor = MaterialTheme.colorScheme.onPrimaryContainer
+                                ) {
+                                    Text(
+                                        text = selectedAccent.displayName,
+                                        style = MaterialTheme.typography.labelMedium,
+                                        fontWeight = FontWeight.Bold,
+                                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
+                                    )
+                                }
+                            }
+
+                            Spacer(modifier = Modifier.height(12.dp))
+
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .horizontalScroll(rememberScrollState()),
+                                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                ThemeAccentColor.entries.forEach { accent ->
+                                    val isSelected = selectedAccent == accent
+                                    val swatchCorner by animateDpAsState(
+                                        targetValue = if (isSelected) 16.dp else 24.dp,
+                                        animationSpec = ExpressiveMotion.spatialFastSpec(),
+                                        label = "AccentSwatchCorner"
+                                    )
+                                    val swatchScale by animateFloatAsState(
+                                        targetValue = if (isSelected) 1.06f else 1f,
+                                        animationSpec = ExpressiveMotion.spatialMicroSpec(),
+                                        label = "AccentSwatchScale"
+                                    )
+
+                                    Column(
+                                        horizontalAlignment = Alignment.CenterHorizontally,
+                                        modifier = Modifier
+                                            .scale(swatchScale)
+                                            .expressivePressable(pressedScale = 0.9f)
+                                            .clip(RoundedCornerShape(14.dp))
+                                            .clickable { viewModel.setThemeAccentColor(accent.id) }
+                                            .padding(horizontal = 4.dp, vertical = 4.dp)
+                                    ) {
+                                        Box(
+                                            modifier = Modifier
+                                                .size(44.dp)
+                                                .clip(RoundedCornerShape(swatchCorner))
+                                                .background(accent.swatchColor)
+                                                .border(
+                                                    width = if (isSelected) 3.dp else 1.dp,
+                                                    color = if (isSelected) {
+                                                        MaterialTheme.colorScheme.onSurface
+                                                    } else {
+                                                        MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+                                                    },
+                                                    shape = RoundedCornerShape(swatchCorner)
+                                                ),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            if (isSelected) {
+                                                Icon(
+                                                    imageVector = Icons.Default.Check,
+                                                    contentDescription = accent.displayName,
+                                                    tint = Color.White,
+                                                    modifier = Modifier.size(20.dp)
+                                                )
+                                            }
+                                        }
+                                        Spacer(modifier = Modifier.height(4.dp))
+                                        Text(
+                                            text = accent.displayName,
+                                            style = MaterialTheme.typography.labelSmall,
+                                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                                            color = if (isSelected) {
+                                                MaterialTheme.colorScheme.primary
+                                            } else {
+                                                MaterialTheme.colorScheme.onSurfaceVariant
+                                            },
+                                            maxLines = 1
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
 
                     HorizontalDivider(modifier = Modifier.padding(vertical = 12.dp))
 
-                    // AMOLED Stealth Pitch-Black Cards
+                    // Pure Black Note Cards
                     SettingsSwitchRow(
-                        title = "Stealth Pitch-Black Cards",
-                        subtitle = "Render default note cards with pure #000000 background in AMOLED mode",
+                        title = "Pure Black Note Cards",
+                        subtitle = "Make uncolored notes completely black in Dark mode for a sleek, high-contrast look",
                         checked = state.amoledPureBlackCards,
                         onCheckedChange = { viewModel.setAmoledPureBlackCards(it) },
                         enabled = state.themeMode == ThemeMode.AMOLED || state.themeMode == ThemeMode.SYSTEM
@@ -308,18 +436,18 @@ fun SettingsScreen(
 
                     HorizontalDivider(modifier = Modifier.padding(vertical = 12.dp))
 
-                    // Show Custom Background Illustrations on Home Cards
+                    // Show Artwork on Note Cards
                     SettingsSwitchRow(
-                        title = "Show Background Illustrations on Cards",
-                        subtitle = "Render custom vector artwork (Space, Nature, Music, etc.) on home grid cards",
+                        title = "Show Artwork on Note Cards",
+                        subtitle = "Display subtle themed illustrations (like Music, Travel, or Nature) on your home screen notes",
                         checked = state.showCardBackgrounds,
                         onCheckedChange = { viewModel.setShowCardBackgrounds(it) }
                     )
                 }
             }
 
-            // 1B. AI Providers, API Keys & Models
-            SettingsSectionHeader(title = "AI Providers, API Keys & Models")
+            // 1B. Smart AI Assistant
+            SettingsSectionHeader(title = "Smart AI Assistant")
 
             val apiCardHighlightScale by animateFloatAsState(
                 targetValue = if (highlightApiKeyField) 1.02f else 1.0f,
@@ -358,12 +486,12 @@ fun SettingsScreen(
 
                 Column(modifier = Modifier.padding(16.dp)) {
                     Text(
-                        text = "Multi-Provider AI Engine",
+                        text = "AI Service & Connection",
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold
                     )
                     Text(
-                        text = "Choose an AI provider, paste your API key, and fetch live models.",
+                        text = "Pick which AI service you want to chat with, then paste your key to get started.",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.padding(top = 2.dp, bottom = 12.dp)
@@ -409,8 +537,8 @@ fun SettingsScreen(
                                 customBaseUrlDraft = it
                                 viewModel.setAiCustomBaseUrl(it)
                             },
-                            label = { Text("Custom OpenAI-Compatible Base URL") },
-                            placeholder = { Text("https://api.openai.com/v1") },
+                            label = { Text("Server Address (URL)") },
+                            placeholder = { Text("http://127.0.0.1:11434/v1 or https://api.openai.com/v1") },
                             singleLine = true,
                             shape = RoundedCornerShape(16.dp),
                             modifier = Modifier
@@ -422,8 +550,8 @@ fun SettingsScreen(
                     OutlinedTextField(
                         value = apiKeyDraft,
                         onValueChange = { apiKeyDraft = it },
-                        label = { Text("${state.aiProvider.displayName} API Key") },
-                        placeholder = { Text("Paste your ${state.aiProvider.displayName} API key...") },
+                        label = { Text("${state.aiProvider.displayName} Key") },
+                        placeholder = { Text("Paste your ${state.aiProvider.displayName} key here...") },
                         singleLine = true,
                         visualTransformation = if (showApiKeyText) VisualTransformation.None else PasswordVisualTransformation(),
                         leadingIcon = {
@@ -437,7 +565,7 @@ fun SettingsScreen(
                             IconButton(onClick = { showApiKeyText = !showApiKeyText }) {
                                 Icon(
                                     imageVector = if (showApiKeyText) Icons.Default.VisibilityOff else Icons.Default.Visibility,
-                                    contentDescription = if (showApiKeyText) "Hide API Key" else "Show API Key"
+                                    contentDescription = if (showApiKeyText) "Hide Key" else "Show Key"
                                 )
                             }
                         },
@@ -453,12 +581,13 @@ fun SettingsScreen(
 
                     Spacer(modifier = Modifier.height(10.dp))
 
-                    // Clean Stacked Status & Full-Width Action Button (Fixes vertical wrapping bug)
                     Text(
                         text = if (state.activeApiKey.isNotBlank()) {
-                            "✓ API key saved for ${state.aiProvider.displayName}"
+                            "✓ Key saved for ${state.aiProvider.displayName}"
+                        } else if (state.aiProvider == AiProvider.CUSTOM) {
+                            "Local AI servers on your phone or computer don't need a key"
                         } else {
-                            "No API key saved yet for ${state.aiProvider.displayName}"
+                            "No key saved yet for ${state.aiProvider.displayName}"
                         },
                         style = MaterialTheme.typography.labelMedium,
                         fontWeight = FontWeight.Medium,
@@ -498,7 +627,7 @@ fun SettingsScreen(
                         }
                         Spacer(modifier = Modifier.width(8.dp))
                         Text(
-                            text = if (state.isFetchingModels) "Fetching Models..." else "Save Key & Fetch Models",
+                            text = if (state.isFetchingModels) "Loading AI Models..." else "Save & Load AI Models",
                             style = MaterialTheme.typography.labelLarge,
                             fontWeight = FontWeight.Bold,
                             maxLines = 1,
@@ -539,12 +668,12 @@ fun SettingsScreen(
                         Spacer(modifier = Modifier.width(14.dp))
                         Column(modifier = Modifier.weight(1f)) {
                             Text(
-                                text = "Selected AI Model",
+                                text = "AI Model",
                                 style = MaterialTheme.typography.bodyLarge,
                                 fontWeight = FontWeight.SemiBold
                             )
                             Text(
-                                text = "${state.activeModelName} · ${state.availableModels.size} available",
+                                text = "Currently using ${state.activeModelName}",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 maxLines = 1,
@@ -556,7 +685,7 @@ fun SettingsScreen(
                             color = MaterialTheme.colorScheme.secondaryContainer
                         ) {
                             Text(
-                                text = "Select / Custom",
+                                text = "Change",
                                 style = MaterialTheme.typography.labelMedium,
                                 color = MaterialTheme.colorScheme.onSecondaryContainer,
                                 fontWeight = FontWeight.Bold,
@@ -567,8 +696,8 @@ fun SettingsScreen(
                 }
             }
 
-            // 2. Editor & New Note Defaults
-            SettingsSectionHeader(title = "Editor & Default Note Styling")
+            // 2. Writing & Checklists
+            SettingsSectionHeader(title = "Writing & Checklists")
 
             Card(
                 shape = CardShapeExpressive,
@@ -627,12 +756,12 @@ fun SettingsScreen(
 
                         Column(modifier = Modifier.weight(1f)) {
                             Text(
-                                text = "Default Note Color & Scene",
+                                text = "Default Style for New Notes",
                                 style = MaterialTheme.typography.bodyLarge,
                                 fontWeight = FontWeight.SemiBold
                             )
                             Text(
-                                text = "${defaultColorObj.displayName} · ${defaultThemeObj.displayName} scene",
+                                text = "${defaultColorObj.displayName} color · ${defaultThemeObj.displayName} background",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
@@ -643,7 +772,7 @@ fun SettingsScreen(
                             color = MaterialTheme.colorScheme.primaryContainer
                         ) {
                             Text(
-                                text = "Customize",
+                                text = "Change",
                                 style = MaterialTheme.typography.labelMedium,
                                 color = MaterialTheme.colorScheme.onPrimaryContainer,
                                 fontWeight = FontWeight.Bold,
@@ -680,7 +809,7 @@ fun SettingsScreen(
                         Spacer(modifier = Modifier.width(14.dp))
                         Column(modifier = Modifier.weight(1f)) {
                             Text(
-                                text = "Default Note Card Size",
+                                text = "Default Card Size on Home Screen",
                                 style = MaterialTheme.typography.bodyLarge,
                                 fontWeight = FontWeight.SemiBold
                             )
@@ -700,38 +829,38 @@ fun SettingsScreen(
 
                     HorizontalDivider(modifier = Modifier.padding(vertical = 12.dp))
 
-                    // Strike-through Completed Tasks
+                    // Cross Out Finished Tasks
                     SettingsSwitchRow(
-                        title = "Strike-through Completed Tasks",
-                        subtitle = "Apply line-through formatting to completed checklist items",
+                        title = "Cross Out Finished Tasks",
+                        subtitle = "Draw a line through checklist items when you check them off",
                         checked = state.strikethroughCompleted,
                         onCheckedChange = { viewModel.setStrikethroughCompleted(it) }
                     )
 
                     HorizontalDivider(modifier = Modifier.padding(vertical = 12.dp))
 
-                    // Move Checked Tasks to Bottom
+                    // Move Finished Tasks to the Bottom
                     SettingsSwitchRow(
-                        title = "Move Checked Tasks to Bottom",
-                        subtitle = "Automatically sink completed checklist items below active tasks",
+                        title = "Move Finished Tasks to the Bottom",
+                        subtitle = "Keep unfinished tasks at the top by moving checked items down automatically",
                         checked = state.moveCheckedToBottom,
                         onCheckedChange = { viewModel.setMoveCheckedToBottom(it) }
                     )
 
                     HorizontalDivider(modifier = Modifier.padding(vertical = 12.dp))
 
-                    // Auto-Focus New Note
+                    // Open Keyboard Immediately for New Notes
                     SettingsSwitchRow(
-                        title = "Auto-focus Editor on New Note",
-                        subtitle = "Immediately focus the note editor when creating a fresh note",
+                        title = "Open Keyboard Immediately for New Notes",
+                        subtitle = "Start typing right away as soon as you tap the + button",
                         checked = state.autoFocusNewNote,
                         onCheckedChange = { viewModel.setAutoFocusNewNote(it) }
                     )
                 }
             }
 
-            // 3. Home Canvas & Grid Layout
-            SettingsSectionHeader(title = "Home Canvas & Grid Layout")
+            // 3. Home Screen Layout
+            SettingsSectionHeader(title = "Home Screen Layout")
 
             Card(
                 shape = CardShapeExpressive,
@@ -744,12 +873,12 @@ fun SettingsScreen(
             ) {
                 Column(modifier = Modifier.padding(16.dp)) {
                     Text(
-                        text = "Grid Layout Density",
+                        text = "How Notes Are Arranged",
                         style = MaterialTheme.typography.bodyLarge,
                         fontWeight = FontWeight.SemiBold
                     )
                     Text(
-                        text = "Select how note cards are arranged on your home canvas",
+                        text = "View your notes side-by-side in two columns or stacked in a single list",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.padding(top = 2.dp, bottom = 12.dp)
@@ -761,7 +890,7 @@ fun SettingsScreen(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         ExpressiveGridDensityOption(
-                            label = "2-Column Grid",
+                            label = "2 Columns",
                             icon = Icons.Default.GridView,
                             selected = state.gridColumns == 2,
                             isLeft = true,
@@ -769,7 +898,7 @@ fun SettingsScreen(
                             modifier = Modifier.weight(1f)
                         )
                         ExpressiveGridDensityOption(
-                            label = "1-Column Feed",
+                            label = "Single List",
                             icon = Icons.Default.ViewAgenda,
                             selected = state.gridColumns == 1,
                             isLeft = false,
@@ -780,48 +909,48 @@ fun SettingsScreen(
 
                     HorizontalDivider(modifier = Modifier.padding(vertical = 12.dp))
 
-                    // Compact Card Spacing
+                    // Fit More Notes on Screen
                     SettingsSwitchRow(
-                        title = "Compact Card Spacing",
-                        subtitle = "Tighten margins between note cards for higher information density",
+                        title = "Fit More Notes on Screen",
+                        subtitle = "Use smaller gaps between notes so you can see more at once",
                         checked = state.compactCardSpacing,
                         onCheckedChange = { viewModel.setCompactCardSpacing(it) }
                     )
 
                     HorizontalDivider(modifier = Modifier.padding(vertical = 12.dp))
 
-                    // Show Checklist Progress Bar
+                    // Show Task Progress on Notes
                     SettingsSwitchRow(
-                        title = "Show Checklist Progress Bar",
-                        subtitle = "Display completion bar and task counter on checklist cards",
+                        title = "Show Task Progress on Notes",
+                        subtitle = "Show a progress bar and how many tasks are done (like 3/5) on checklist notes",
                         checked = state.showTaskProgress,
                         onCheckedChange = { viewModel.setShowTaskProgress(it) }
                     )
 
                     HorizontalDivider(modifier = Modifier.padding(vertical = 12.dp))
 
-                    // Show Note Metadata
+                    // Show Last Edited Time
                     SettingsSwitchRow(
-                        title = "Show Note Details & Timestamps",
-                        subtitle = "Display relative edited time and block count footer on cards",
+                        title = "Show Last Edited Time",
+                        subtitle = "Display when each note was last updated at the bottom of the card",
                         checked = state.showNoteMetadata,
                         onCheckedChange = { viewModel.setShowNoteMetadata(it) }
                     )
 
                     HorizontalDivider(modifier = Modifier.padding(vertical = 12.dp))
 
-                    // Confirm Note Delete
+                    // Ask Before Deleting a Note
                     SettingsSwitchRow(
-                        title = "Confirm Before Deleting Notes",
-                        subtitle = "Ask for confirmation before permanently deleting a note",
+                        title = "Ask Before Deleting a Note",
+                        subtitle = "Show a confirmation prompt so you never delete a note by accident",
                         checked = state.confirmNoteDelete,
                         onCheckedChange = { viewModel.setConfirmNoteDelete(it) }
                     )
                 }
             }
 
-            // 4. Data, Backup & Privacy
-            SettingsSectionHeader(title = "Storage, Backup & Privacy")
+            // 4. Backup & Your Data
+            SettingsSectionHeader(title = "Backup & Your Data")
 
             Card(
                 shape = CardShapeExpressive,
@@ -831,7 +960,7 @@ fun SettingsScreen(
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Column(modifier = Modifier.padding(16.dp)) {
-                    // Expressive Storage Summary Metrics
+                    // Friendly Storage Summary Banner
                     Surface(
                         shape = RoundedCornerShape(18.dp),
                         color = MaterialTheme.colorScheme.surfaceContainerHigh,
@@ -856,7 +985,7 @@ fun SettingsScreen(
                                 Spacer(Modifier.width(10.dp))
                                 Column {
                                     Text(
-                                        text = "100% On-Device SQLite",
+                                        text = "Stored Privately on Your Phone",
                                         style = MaterialTheme.typography.labelLarge,
                                         fontWeight = FontWeight.Bold
                                     )
@@ -873,8 +1002,8 @@ fun SettingsScreen(
                     // Export
                     SettingsActionRow(
                         icon = Icons.Default.Download,
-                        title = "Export Notes Backup (JSON)",
-                        subtitle = "Save all notes, rich formatting, and themes to a portable file",
+                        title = "Save a Backup File",
+                        subtitle = "Save a copy of all your notes to your phone or cloud drive",
                         onClick = {
                             exportLauncher.launch("zainotes_backup_${System.currentTimeMillis()}.json")
                         }
@@ -885,8 +1014,8 @@ fun SettingsScreen(
                     // Import
                     SettingsActionRow(
                         icon = Icons.Default.Upload,
-                        title = "Import Notes Backup (JSON)",
-                        subtitle = "Restore notes from a previously exported JSON backup file",
+                        title = "Restore from a Backup File",
+                        subtitle = "Bring back your notes from a saved backup file",
                         onClick = {
                             importLauncher.launch(arrayOf("application/json", "text/plain"))
                         }
@@ -897,18 +1026,18 @@ fun SettingsScreen(
                     // Reset Preferences
                     SettingsActionRow(
                         icon = Icons.Default.RestartAlt,
-                        title = "Reset Settings to Defaults",
-                        subtitle = "Restore default theme, layout, and editor preferences without deleting notes",
+                        title = "Reset App Settings",
+                        subtitle = "Change all settings back to default (your notes will stay safe)",
                         onClick = { viewModel.resetSettingsToDefaults() }
                     )
 
                     HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
 
-                    // Clear All Notes
+                    // Delete All Notes
                     SettingsActionRow(
                         icon = Icons.Default.DeleteForever,
-                        title = "Clear All Notes",
-                        subtitle = "Permanently remove all notes and checklists from local storage",
+                        title = "Delete All Notes",
+                        subtitle = "Permanently erase every note and checklist from this phone",
                         iconTint = MaterialTheme.colorScheme.error,
                         titleColor = MaterialTheme.colorScheme.error,
                         onClick = { showClearConfirmation = true }
@@ -916,8 +1045,8 @@ fun SettingsScreen(
                 }
             }
 
-            // 5. About Zainotes
-            SettingsSectionHeader(title = "About Zainotes")
+            // 5. Software Updates & About Zainotes
+            SettingsSectionHeader(title = "Software Updates & About Zainotes")
 
             Card(
                 shape = CardShapeExpressive,
@@ -934,7 +1063,7 @@ fun SettingsScreen(
                         Surface(
                             shape = RoundedCornerShape(14.dp),
                             color = MaterialTheme.colorScheme.primaryContainer,
-                            modifier = Modifier.size(44.dp)
+                            modifier = Modifier.size(46.dp)
                         ) {
                             Box(contentAlignment = Alignment.Center) {
                                 Icon(
@@ -946,19 +1075,67 @@ fun SettingsScreen(
                             }
                         }
                         Spacer(modifier = Modifier.width(14.dp))
-                        Column {
+                        Column(modifier = Modifier.weight(1f)) {
                             Text(
                                 text = "Zainotes v${stringResource(R.string.app_version)}",
                                 style = MaterialTheme.typography.titleMedium,
                                 fontWeight = FontWeight.Bold
                             )
                             Text(
-                                text = "Material 3 Expressive Freeform Notes & Tasks",
+                                text = "Simple, private notes, checklists, and smart AI assistant",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
+                        Surface(
+                            shape = CircleShape,
+                            color = MaterialTheme.colorScheme.secondaryContainer,
+                            contentColor = MaterialTheme.colorScheme.onSecondaryContainer
+                        ) {
+                            Text(
+                                text = "v${stringResource(R.string.app_version)}",
+                                style = MaterialTheme.typography.labelMedium,
+                                fontWeight = FontWeight.ExtraBold,
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
+                            )
+                        }
                     }
+
+                    Spacer(modifier = Modifier.height(14.dp))
+
+                    val otaBtnInteraction = remember { MutableInteractionSource() }
+                    FilledTonalButton(
+                        onClick = { showOtaUpdaterSheet = true },
+                        interactionSource = otaBtnInteraction,
+                        shape = CircleShape,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(48.dp)
+                            .expressivePressable(otaBtnInteraction, pressedScale = 0.95f)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.SystemUpdate,
+                            contentDescription = null,
+                            modifier = Modifier.size(19.dp)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = "Check for Updates & View Changelogs",
+                            style = MaterialTheme.typography.labelLarge,
+                            fontWeight = FontWeight.Bold,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+
+                    HorizontalDivider(modifier = Modifier.padding(vertical = 12.dp))
+
+                    SettingsSwitchRow(
+                        title = "Automatically Check for Updates",
+                        subtitle = "Check GitHub for new Zainotes releases when the app opens and notify you with the changelog",
+                        checked = state.autoCheckUpdates,
+                        onCheckedChange = { viewModel.setAutoCheckUpdates(it) }
+                    )
 
                     HorizontalDivider(modifier = Modifier.padding(vertical = 12.dp))
 
@@ -975,12 +1152,12 @@ fun SettingsScreen(
                         Spacer(modifier = Modifier.width(14.dp))
                         Column {
                             Text(
-                                text = "GNU Affero GPL v3.0 (AGPLv3)",
+                                text = "Free & Open-Source App",
                                 style = MaterialTheme.typography.bodyMedium,
                                 fontWeight = FontWeight.SemiBold
                             )
                             Text(
-                                text = "Free & Open Source Software · Zero Tracking",
+                                text = "No ads, no tracking, and open-source under the AGPLv3 license",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
@@ -1012,7 +1189,7 @@ fun SettingsScreen(
                         Spacer(modifier = Modifier.width(14.dp))
                         Column(modifier = Modifier.weight(1f)) {
                             Text(
-                                text = "GitHub Repository",
+                                text = "View Source Code on GitHub",
                                 style = MaterialTheme.typography.bodyMedium,
                                 fontWeight = FontWeight.SemiBold
                             )
@@ -1026,6 +1203,15 @@ fun SettingsScreen(
                 }
             }
         }
+    }
+
+    if (showOtaUpdaterSheet) {
+        OtaUpdaterSheet(
+            initialCheckResult = null,
+            sheetState = otaSheetState,
+            onDismissRequest = { showOtaUpdaterSheet = false },
+            onDismissReleaseTag = { tag -> viewModel.setDismissedUpdateTag(tag) }
+        )
     }
 
     if (showSizePicker) {
@@ -1064,14 +1250,14 @@ fun SettingsScreen(
             },
             title = {
                 Text(
-                    text = "Clear all notes?",
+                    text = "Delete all notes?",
                     style = MaterialTheme.typography.headlineSmall,
                     fontWeight = FontWeight.Bold
                 )
             },
             text = {
                 Text(
-                    text = "This will permanently remove all ${state.totalNotesCount} notes and checklists from local storage. This action cannot be undone.",
+                    text = "This will permanently delete all ${state.totalNotesCount} notes and checklists from your phone. You cannot undo this.",
                     style = MaterialTheme.typography.bodyMedium
                 )
             },
@@ -1083,7 +1269,7 @@ fun SettingsScreen(
                     }
                 ) {
                     Text(
-                        text = "Clear All",
+                        text = "Delete Everything",
                         color = MaterialTheme.colorScheme.error,
                         fontWeight = FontWeight.Bold
                     )
@@ -1105,7 +1291,7 @@ fun SettingsScreen(
             onDismissRequest = { viewModel.dismissModelSelectorPrompt() },
             title = {
                 Text(
-                    text = "Select ${state.aiProvider.displayName} Model",
+                    text = "Choose AI Model",
                     style = MaterialTheme.typography.titleLarge,
                     fontWeight = FontWeight.Bold
                 )
@@ -1118,7 +1304,7 @@ fun SettingsScreen(
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     Text(
-                        text = "Choose a model fetched from the API or enter any custom model ID below:",
+                        text = "Pick an AI model from the list below, or type any model name:",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -1126,7 +1312,7 @@ fun SettingsScreen(
                     OutlinedTextField(
                         value = customModelDraft,
                         onValueChange = { customModelDraft = it },
-                        label = { Text("Custom or Selected Model Name") },
+                        label = { Text("Model Name") },
                         placeholder = { Text(state.aiProvider.defaultModel) },
                         singleLine = true,
                         shape = RoundedCornerShape(14.dp),
@@ -1136,7 +1322,7 @@ fun SettingsScreen(
                     Spacer(modifier = Modifier.height(4.dp))
 
                     Text(
-                        text = "Fetched / Available Models (${state.availableModels.size})",
+                        text = "Available Models (${state.availableModels.size})",
                         style = MaterialTheme.typography.labelMedium,
                         color = MaterialTheme.colorScheme.primary,
                         fontWeight = FontWeight.Bold
@@ -1175,7 +1361,7 @@ fun SettingsScreen(
                         )
                     }
                 ) {
-                    Text("Use Model", fontWeight = FontWeight.Bold)
+                    Text("Save Model", fontWeight = FontWeight.Bold)
                 }
             },
             dismissButton = {
