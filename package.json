@@ -1,0 +1,12 @@
+{
+  "name": "zainotes-companion",
+  "version": "2.1.0",
+  "description": "Zainotes Android Dev Companion and Preview Server",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js"
+  },
+  "author": "Zainotes Team",
+  "license": "AGPL-3.0"
+}

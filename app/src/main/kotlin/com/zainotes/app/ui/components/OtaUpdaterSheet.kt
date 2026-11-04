@@ -28,6 +28,7 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -161,6 +162,10 @@ fun OtaUpdaterSheet(
     }
 
     fun startApprovedDownload(release: OtaReleaseInfo) {
+        if (checkResult?.isUpdateAvailable != true) {
+            triggerCheck()
+            return
+        }
         activeDownloadJob?.cancel()
         downloadError = null
         downloadedApkFile = null
@@ -205,7 +210,7 @@ fun OtaUpdaterSheet(
                 .fillMaxWidth()
                 .navigationBarsPadding()
                 .verticalScroll(rememberScrollState())
-                .padding(horizontal = 20.dp, vertical = 8.dp)
+                .padding(horizontal = 16.dp, vertical = 8.dp)
                 .padding(bottom = 28.dp),
             verticalArrangement = Arrangement.spacedBy(18.dp)
         ) {
@@ -323,6 +328,11 @@ fun OtaUpdaterSheet(
                             downloadedApkFile = downloadedApkFile,
                             downloadError = downloadError,
                             needsInstallPermission = needsInstallPermission,
+                            onCheckForUpdates = {
+                                if (!isChecking && !isDownloading) {
+                                    triggerCheck()
+                                }
+                            },
                             onApproveDownload = {
                                 startApprovedDownload(result.latestRelease)
                             },
@@ -554,6 +564,7 @@ private fun OtaReleaseHeroCard(
     downloadedApkFile: File?,
     downloadError: String?,
     needsInstallPermission: Boolean,
+    onCheckForUpdates: () -> Unit,
     onApproveDownload: () -> Unit,
     onCancelDownload: () -> Unit,
     onInstallDownloadedApk: (File) -> Unit,
@@ -563,14 +574,15 @@ private fun OtaReleaseHeroCard(
 ) {
     val isUpdateAvailable = result.isUpdateAvailable
     val latest = result.latestRelease
+    val hasReadyUpdateApk = isUpdateAvailable && downloadedApkFile != null && downloadedApkFile.exists()
 
     val containerColor = when {
-        downloadedApkFile != null -> MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.65f)
+        hasReadyUpdateApk -> MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.65f)
         isUpdateAvailable -> MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.55f)
         else -> MaterialTheme.colorScheme.surfaceContainerHigh
     }
     val borderColor = when {
-        downloadedApkFile != null -> MaterialTheme.colorScheme.primary
+        hasReadyUpdateApk -> MaterialTheme.colorScheme.primary
         isUpdateAvailable -> MaterialTheme.colorScheme.primary
         else -> MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
     }
@@ -584,7 +596,7 @@ private fun OtaReleaseHeroCard(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(18.dp),
+                .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
             // Status Pill + Version Badges
@@ -596,12 +608,12 @@ private fun OtaReleaseHeroCard(
                 Surface(
                     shape = CircleShape,
                     color = when {
-                        downloadedApkFile != null -> MaterialTheme.colorScheme.primary
+                        hasReadyUpdateApk -> MaterialTheme.colorScheme.primary
                         isUpdateAvailable -> MaterialTheme.colorScheme.primary
                         else -> MaterialTheme.colorScheme.secondaryContainer
                     },
                     contentColor = when {
-                        downloadedApkFile != null -> MaterialTheme.colorScheme.onPrimary
+                        hasReadyUpdateApk -> MaterialTheme.colorScheme.onPrimary
                         isUpdateAvailable -> MaterialTheme.colorScheme.onPrimary
                         else -> MaterialTheme.colorScheme.onSecondaryContainer
                     }
@@ -612,7 +624,7 @@ private fun OtaReleaseHeroCard(
                     ) {
                         Icon(
                             imageVector = when {
-                                downloadedApkFile != null -> Icons.Default.DownloadDone
+                                hasReadyUpdateApk -> Icons.Default.DownloadDone
                                 isUpdateAvailable -> Icons.Default.NewReleases
                                 else -> Icons.Default.CheckCircle
                             },
@@ -622,7 +634,7 @@ private fun OtaReleaseHeroCard(
                         Spacer(modifier = Modifier.width(6.dp))
                         Text(
                             text = when {
-                                downloadedApkFile != null -> "Ready to Install"
+                                hasReadyUpdateApk -> "Ready to Install"
                                 isDownloading -> "Downloading Update..."
                                 isUpdateAvailable -> "New Release Available"
                                 else -> "Up to Date"
@@ -875,10 +887,10 @@ private fun OtaReleaseHeroCard(
                 }
             }
 
-            // Action Buttons (Approve & Download / Install / Later)
+            // Action Buttons (Download & Install / Check for Updates / Install / Later)
             if (!isDownloading) {
                 val readyFile = downloadedApkFile
-                if (readyFile != null && readyFile.exists()) {
+                if (readyFile != null && readyFile.exists() && isUpdateAvailable) {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(10.dp),
@@ -889,28 +901,32 @@ private fun OtaReleaseHeroCard(
                             onClick = { onInstallDownloadedApk(readyFile) },
                             interactionSource = installInteraction,
                             shape = CircleShape,
+                            contentPadding = PaddingValues(horizontal = 14.dp, vertical = 10.dp),
                             modifier = Modifier
                                 .weight(1f)
-                                .height(50.dp)
+                                .height(48.dp)
                                 .expressivePressable(installInteraction, pressedScale = 0.94f)
                         ) {
                             Icon(
                                 imageVector = Icons.Default.InstallMobile,
                                 contentDescription = null,
-                                modifier = Modifier.size(20.dp)
+                                modifier = Modifier.size(18.dp)
                             )
-                            Spacer(modifier = Modifier.width(8.dp))
+                            Spacer(modifier = Modifier.width(6.dp))
                             Text(
                                 text = "Install Update Now",
                                 style = MaterialTheme.typography.labelLarge,
-                                fontWeight = FontWeight.ExtraBold
+                                fontWeight = FontWeight.ExtraBold,
+                                maxLines = 1,
+                                softWrap = false
                             )
                         }
 
                         FilledTonalButton(
                             onClick = onApproveDownload,
                             shape = CircleShape,
-                            modifier = Modifier.height(50.dp)
+                            contentPadding = PaddingValues(0.dp),
+                            modifier = Modifier.size(48.dp)
                         ) {
                             Icon(
                                 imageVector = Icons.Default.Refresh,
@@ -930,70 +946,80 @@ private fun OtaReleaseHeroCard(
                             onClick = onApproveDownload,
                             interactionSource = approveInteraction,
                             shape = CircleShape,
-                            modifier = Modifier
-                                .weight(1f)
-                                .height(50.dp)
-                                .expressivePressable(approveInteraction, pressedScale = 0.94f)
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.CloudDownload,
-                                contentDescription = null,
-                                modifier = Modifier.size(20.dp)
-                            )
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text(
-                                text = "Approve & Download",
-                                style = MaterialTheme.typography.labelLarge,
-                                fontWeight = FontWeight.ExtraBold,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
-                            )
-                        }
-
-                        OutlinedButton(
-                            onClick = onRemindLater,
-                            shape = CircleShape,
-                            modifier = Modifier.height(50.dp)
-                        ) {
-                            Text("Later", fontWeight = FontWeight.SemiBold)
-                        }
-                    }
-                } else {
-                    // Up to Date: still allow user to approve downloading/reinstalling the latest GitHub APK or open GitHub
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(10.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        val reinstallInteraction = remember { MutableInteractionSource() }
-                        FilledTonalButton(
-                            onClick = onApproveDownload,
-                            interactionSource = reinstallInteraction,
-                            shape = CircleShape,
+                            contentPadding = PaddingValues(horizontal = 14.dp, vertical = 10.dp),
                             modifier = Modifier
                                 .weight(1f)
                                 .height(48.dp)
-                                .expressivePressable(reinstallInteraction, pressedScale = 0.94f)
+                                .expressivePressable(approveInteraction, pressedScale = 0.94f)
                         ) {
                             Icon(
                                 imageVector = Icons.Default.CloudDownload,
                                 contentDescription = null,
                                 modifier = Modifier.size(18.dp)
                             )
-                            Spacer(modifier = Modifier.width(8.dp))
+                            Spacer(modifier = Modifier.width(6.dp))
                             Text(
-                                text = "Download & Install Latest APK",
+                                text = "Download & Install",
+                                style = MaterialTheme.typography.labelLarge,
+                                fontWeight = FontWeight.ExtraBold,
+                                maxLines = 1,
+                                softWrap = false
+                            )
+                        }
+
+                        OutlinedButton(
+                            onClick = onRemindLater,
+                            shape = CircleShape,
+                            contentPadding = PaddingValues(horizontal = 14.dp, vertical = 10.dp),
+                            modifier = Modifier.height(48.dp)
+                        ) {
+                            Text(
+                                text = "Later",
+                                style = MaterialTheme.typography.labelLarge,
+                                fontWeight = FontWeight.SemiBold,
+                                maxLines = 1,
+                                softWrap = false
+                            )
+                        }
+                    }
+                } else {
+                    // Up to Date: provide Check for Updates button instead of Download & Install
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        val checkInteraction = remember { MutableInteractionSource() }
+                        FilledTonalButton(
+                            onClick = onCheckForUpdates,
+                            interactionSource = checkInteraction,
+                            shape = CircleShape,
+                            contentPadding = PaddingValues(horizontal = 14.dp, vertical = 10.dp),
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(48.dp)
+                                .expressivePressable(checkInteraction, pressedScale = 0.94f)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Refresh,
+                                contentDescription = null,
+                                modifier = Modifier.size(18.dp)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = "Check for Updates",
                                 style = MaterialTheme.typography.labelLarge,
                                 fontWeight = FontWeight.Bold,
                                 maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
+                                softWrap = false
                             )
                         }
 
                         OutlinedButton(
                             onClick = { onOpenGitHubRelease(latest.htmlUrl) },
                             shape = CircleShape,
-                            modifier = Modifier.height(48.dp)
+                            contentPadding = PaddingValues(0.dp),
+                            modifier = Modifier.size(48.dp)
                         ) {
                             Icon(
                                 imageVector = Icons.Default.OpenInNew,
