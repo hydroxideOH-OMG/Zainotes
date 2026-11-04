@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  ~ Copyright (C) 2026 Zainotes Contributors
+  ~ Licensed under the GNU Affero General Public License v3.0 or later.
+  -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Top 3D Perspective Pill -->
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M 38,21 L 64,21 C 66.2,21 68,22.8 68,25 C 68,27.2 66.2,29 64,29 L 38,29 C 35.8,29 34,27.2 34,25 C 34,22.8 35.8,21 38,21 Z" />
+    <!-- Right 3D Perspective Pill -->
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M 82,34 C 84.2,34 86,35.8 86,38 L 86,72 C 86,74.2 84.2,76 82,76 C 79.8,76 78,74.2 78,72 L 78,38 C 78,35.8 79.8,34 82,34 Z" />
+    <!-- Front Face Squircle with Cutout "Z" -->
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:fillType="evenOdd"
+        android:pathData="M 39,34 L 63,34 C 70.2,34 76,39.8 76,47 L 76,71 C 76,78.2 70.2,84 63,84 L 39,84 C 31.8,84 26,78.2 26,71 L 26,47 C 26,39.8 31.8,34 39,34 Z M 40.5,46.5 L 61.5,46.5 C 63.4,46.5 65,48.1 65,50 C 65,51.9 63.4,53.5 61.5,53.5 L 51,53.5 L 43.5,65 L 61.5,65 C 63.4,65 65,66.6 65,68.5 C 65,70.4 63.4,72 61.5,72 L 40.5,72 C 38.6,72 37,70.4 37,68.5 C 37,66.6 38.6,65 40.5,65 L 51,65 L 58.5,53.5 L 40.5,53.5 C 38.6,53.5 37,51.9 37,50 C 37,48.1 38.6,46.5 40.5,46.5 Z" />
+</vector>
