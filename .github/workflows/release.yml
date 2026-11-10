@@ -48,36 +48,21 @@ jobs:
           RELEASE_APK=$(find app/build/outputs/apk/release -name "*.apk" | head -n 1)
           APKSIGNER=$(find "$ANDROID_HOME/build-tools" -name apksigner | sort -V | tail -n 1)
 
-          if [ -n "$KEYSTORE_BASE64" ] && [ -n "$KEYSTORE_PASS" ] && [ -n "$KEY_ALIAS" ]; then
-            echo "Signing with repository secret keystore using $APKSIGNER..."
-            echo "$KEYSTORE_BASE64" | base64 -d > release.keystore
-            "$APKSIGNER" sign \
-              --ks release.keystore \
-              --ks-pass pass:"$KEYSTORE_PASS" \
-              --ks-key-alias "$KEY_ALIAS" \
-              --key-pass pass:"${KEY_PASS:-$KEYSTORE_PASS}" \
-              --out release-output/Zainotes-signed.apk \
-              "$RELEASE_APK"
-          elif [ -f "keystore/release.keystore" ]; then
-            echo "Signing with repository permanent release keystore using $APKSIGNER..."
-            "$APKSIGNER" sign \
-              --ks keystore/release.keystore \
-              --ks-pass pass:***REMOVED*** \
-              --ks-key-alias zainotes \
-              --key-pass pass:***REMOVED*** \
-              --out release-output/Zainotes-signed.apk \
-              "$RELEASE_APK"
-          else
-            echo "Fallback: Generating and signing with automated release key using $APKSIGNER..."
-            keytool -genkeypair -v -keystore ci.keystore -storepass android -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Zainotes, O=OpenSource, C=US"
-            "$APKSIGNER" sign \
-              --ks ci.keystore \
-              --ks-pass pass:android \
-              --ks-key-alias androiddebugkey \
-              --key-pass pass:android \
-              --out release-output/Zainotes-signed.apk \
-              "$RELEASE_APK"
+          if [ -z "$KEYSTORE_BASE64" ] || [ -z "$KEYSTORE_PASS" ] || [ -z "$KEY_ALIAS" ]; then
+            echo "::error::Release signing secrets are not configured. Set SIGNING_KEYSTORE_BASE64, KEYSTORE_PASSWORD, KEY_ALIAS, and KEY_PASSWORD."
+            exit 1
           fi
+
+          echo "Signing with repository secret keystore using $APKSIGNER..."
+          echo "$KEYSTORE_BASE64" | base64 -d > release.keystore
+          "$APKSIGNER" sign \
+            --ks release.keystore \
+            --ks-pass pass:"$KEYSTORE_PASS" \
+            --ks-key-alias "$KEY_ALIAS" \
+            --key-pass pass:"${KEY_PASS:-$KEYSTORE_PASS}" \
+            --out release-output/Zainotes-signed.apk \
+            "$RELEASE_APK"
+          rm -f release.keystore
 
       - name: Determine Tag Name
         id: tag

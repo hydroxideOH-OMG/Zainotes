@@ -15,9 +15,13 @@
 *.apk
 *.aab
 *.keystore
-!keystore/release.keystore
 !debug.keystore
 *.jks
+*.p12
+*.pfx
+*.b64
+keystore.properties
+signing.properties
 
 # Environment & local secrets
 .env
